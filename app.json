@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "temp-clap-serv",
-    "slug": "temp-clap-serv",
+    "name": "Clap-Serv",
+    "slug": "clap-serv",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "tempclapserv",
+    "scheme": "clapserv",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -17,6 +17,7 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.clapserv.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -30,10 +31,17 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "45e8929e-ffb7-440b-bc6e-1f2a58a442a7"
+      }
     }
   }
 }
