@@ -1,95 +1,157 @@
-# Clap-Serv MVP
+# Clap-Serv
 
-A cross-platform service marketplace app built with Expo, React Native Web, NativeWind (Tailwind CSS), and Supabase.
+A cross-platform service marketplace app built with Expo, React Native, and Supabase.
 
-**"The Amazon of Services"** - Connecting service buyers with qualified providers through competitive bidding.
+Connecting service buyers with qualified providers through competitive bidding.
 
-## 🚀 Features Implemented
+## Features
 
-### ✅ Phase 1-4: Core Foundation (COMPLETED)
+### Authentication
+- Email/password login and registration
+- Role selection (Buyer, Provider, or Both)
+- OTP-based password reset (no redirect links)
+- Change password for logged-in users
+- Protected routes with automatic redirection
 
-#### Authentication System
-- **Login Screen** - Email/password authentication
-- **Registration Screen** - Role selection (Buyer, Provider, or Both)
-- **Forgot Password** - Email-based password reset
-- **Auth State Management** - Zustand store with Supabase integration
-- **Protected Routes** - Automatic redirection based on auth state
+### Buyer Features
+- Post service requests with category, budget, timeline, location, and attachments
+- Browse and search verified service providers
+- View and manage submitted requests
+- Review incoming proposals from providers
+- Accept proposals to create projects
+- In-app notifications for proposal updates
 
-#### Navigation
-- **Bottom Tab Navigation** - 5 tabs: Home, Browse, Projects, Messages, Profile
-- **Role-Based UI** - Dynamic content based on Buyer/Provider role
-- **Role Switching** - Toggle between roles for users with "both" permission
+### Provider Features
+- Browse matching opportunities filtered by skills and distance
+- Submit proposals with pricing and timeline
+- Skill-based category selection in profile
+- Dashboard with active bids and project stats
+- Push notifications when new matching requests are posted
 
-#### Dashboard
-- Welcome message with user name
-- Quick stats (requests, proposals, projects)
-- Role switcher for dual-role users
-- Quick actions (contextual to buyer/provider role)
-- Recent activity feed
+### Admin Panel (Web)
+- Manage users, providers, and verification status
+- Manage service categories (add/edit/delete)
+- Manage regions
+- View all requests and projects
+- Provider verification workflow
 
-#### UI Components (NativeWind Styled)
-- `Button` - 5 variants, 3 sizes, touch-optimized (44px min)
-- `Input` - With labels, errors, left/right icons
-- `Card` - 3 variants (default, outlined, elevated)
-- `Badge` - Status badges (success, warning, error, info)
-- `Avatar` - With image or fallback initials
+### Notifications
+- Push notifications via Expo (mobile)
+- In-app notification center
+- Category-based provider matching — only providers with matching skills get notified
+- Distance-based filtering for local services
 
-#### Utilities
-- **Validation** - Zod schemas for forms
-- **Formatting** - Currency, dates, distances, file sizes
-- **Location** - Geolocation, distance calculation (Haversine)
+### Additional
+- Role switching for dual-role users
+- Real-time dashboard stats from Supabase
+- Location auto-capture for physical service requests
+- Web-compatible (conditional native module loading)
+- Safe area handling for Android navigation buttons
 
-#### State Management
-- **Auth Store** - Sign in, sign up, sign out, password reset
-- **User Store** - Profile and provider profile management
-- **Role Store** - Active role with AsyncStorage persistence
-
-## 📁 Project Structure
+## Project Structure
 
 ```
 clap-serv/
 ├── app/
-│   ├── (auth)/              # Authentication screens
+│   ├── (admin)/                # Admin panel
+│   │   ├── index.tsx           # Admin dashboard
+│   │   ├── categories.tsx      # Manage service categories
+│   │   ├── providers.tsx       # Manage/verify providers
+│   │   ├── users.tsx           # Manage users
+│   │   ├── regions.tsx         # Manage regions
+│   │   ├── requests.tsx        # View all requests
+│   │   ├── projects.tsx        # View all projects
+│   │   └── _layout.tsx
+│   ├── (auth)/                 # Authentication screens
 │   │   ├── login.tsx
 │   │   ├── register.tsx
-│   │   ├── forgot-password.tsx
+│   │   ├── forgot-password.tsx # OTP-based reset flow
+│   │   ├── reset-password.tsx
+│   │   ├── diagnostic.tsx
 │   │   └── _layout.tsx
-│   ├── (tabs)/              # Main app tabs
-│   │   ├── index.tsx        # Dashboard
-│   │   ├── browse.tsx       # Browse opportunities/requests
-│   │   ├── projects.tsx     # Active projects
-│   │   ├── messages.tsx     # Conversations
-│   │   ├── profile.tsx      # User profile
-│   │   └── _layout.tsx      # Tab navigation
-│   ├── _layout.tsx          # Root layout with auth guards
-│   └── index.tsx            # Entry point
+│   ├── (tabs)/                 # Main app tabs
+│   │   ├── index.tsx           # Dashboard (buyer/provider stats)
+│   │   ├── browse.tsx          # Browse opportunities/providers
+│   │   ├── projects.tsx        # Active projects
+│   │   ├── messages.tsx        # Conversations
+│   │   ├── profile.tsx         # User profile
+│   │   └── _layout.tsx         # Tab navigation with safe area
+│   ├── requests/               # Service requests
+│   │   ├── new.tsx             # Post new request
+│   │   ├── my-requests.tsx     # View my requests
+│   │   └── [id].tsx            # Request detail
+│   ├── proposals/              # Proposals
+│   │   ├── index.tsx           # View proposals
+│   │   └── new/[requestId].tsx # Submit proposal
+│   ├── projects/               # Projects
+│   │   ├── [id].tsx            # Project detail
+│   │   └── [id]/chat.tsx       # Project chat
+│   ├── profile/                # Profile management
+│   │   ├── edit.tsx            # Edit profile + skills
+│   │   └── provider-gigs.tsx   # Provider gigs
+│   ├── settings/               # Settings
+│   │   ├── index.tsx           # Settings menu
+│   │   └── change-password.tsx # Change password
+│   ├── notifications.tsx       # Notification center
+│   ├── _layout.tsx             # Root layout with auth guards
+│   └── index.tsx               # Entry point
 ├── components/
-│   └── ui/                  # Reusable UI components
+│   ├── BrowseProviders.tsx     # Provider listing for buyers
+│   ├── cards/
+│   │   ├── RequestCard.tsx     # Service request card
+│   │   └── ProposalCard.tsx    # Proposal card
+│   └── ui/                     # Reusable UI components
+│       ├── CategoryMultiSelect.tsx
+│       ├── Avatar.tsx
+│       ├── Badge.tsx
+│       ├── Button.tsx
+│       ├── Card.tsx
+│       ├── Input.tsx
+│       └── index.ts
 ├── constants/
-│   ├── Colors.ts            # Color palette
-│   ├── ServiceCategories.ts # 22 service categories
-│   └── Config.ts            # App configuration
+│   ├── Colors.ts               # Color palette
+│   ├── ServiceCategories.ts    # Service categories
+│   └── Config.ts               # App configuration
 ├── lib/
-│   ├── supabase.ts          # Supabase client
-│   └── utils/               # Utilities
-├── store/                   # Zustand stores
-│   ├── authStore.ts
-│   ├── userStore.ts
-│   └── roleStore.ts
-├── types/                   # TypeScript types
-│   ├── database.types.ts
-│   └── index.ts
-├── .env                     # Environment variables
-├── tailwind.config.js       # Tailwind configuration
-├── supabase-schema.sql      # Database schema
-└── PROGRESS.md              # Detailed progress
+│   ├── supabase.ts             # Supabase client
+│   ├── categoryCache.ts        # Category cache (5-min TTL)
+│   ├── useCategoryLookup.ts    # Category lookup hook
+│   ├── api/
+│   │   └── admin.ts            # Admin API functions
+│   ├── notifications/
+│   │   ├── index.ts            # Notification entry point
+│   │   ├── providerMatcher.ts  # Match providers by skills + distance
+│   │   ├── pushTokenService.ts # Push token registration
+│   │   └── sendNotification.ts # Send push + in-app notifications
+│   └── utils/
+│       ├── location.ts         # Geolocation (native + web)
+│       ├── formatting.ts       # Currency, dates, distances
+│       └── validation.ts       # Zod schemas
+├── store/                      # Zustand state management
+│   ├── authStore.ts            # Authentication
+│   ├── userStore.ts            # Profile + provider profile
+│   ├── roleStore.ts            # Active role
+│   ├── notificationStore.ts    # Notifications
+│   └── adminStore.ts           # Admin operations
+├── types/
+│   ├── database.types.ts       # Database types
+│   └── index.ts                # App types
+├── utils/
+│   └── alert.ts                # Cross-platform alerts
+├── supabase-schema.sql         # Base database schema
+├── supabase-migration-v2.sql   # Migration: verification, review counts
+├── supabase-migration-v3.sql   # Migration: category system
+├── supabase-migration-v4-notifications.sql  # Migration: notifications
+├── supabase-rls-fix.sql        # RLS policy fixes
+├── tailwind.config.js
+└── eas.json                    # EAS Build config
 ```
 
-## 🛠️ Setup Instructions
+## Setup
 
 ### Prerequisites
-- Node.js 18+ installed
-- npm or yarn
+- Node.js 18+
+- npm
 - Expo CLI (`npm install -g expo-cli`)
 - A Supabase account
 
@@ -101,187 +163,83 @@ npm install
 
 ### 2. Setup Supabase
 
-#### Create Supabase Project
-1. Go to https://supabase.com
-2. Create a new project named "clap-serv"
-3. Wait for the project to initialize
+1. Go to [supabase.com](https://supabase.com) and create a new project
+2. Open SQL Editor and run the following files in order:
+   - `supabase-schema.sql` — base tables, RLS policies, service categories
+   - `supabase-migration-v2.sql` — verification, indexes, review counts
+   - `supabase-migration-v3.sql` — category system updates
+   - `supabase-migration-v4-notifications.sql` — notification tables, push tokens
+   - `supabase-rls-fix.sql` — RLS policy fixes
 
-#### Run Database Schema
-1. Open Supabase Dashboard → SQL Editor
-2. Copy the entire contents of `supabase-schema.sql`
-3. Paste and click "Run"
-
-This creates:
-- 9 database tables
-- Row Level Security policies
-- Indexes for performance
-- 22 pre-populated service categories
-
-#### Create Storage Buckets
-1. Go to Storage in Supabase Dashboard
-2. Create 3 buckets:
+3. Create storage buckets (Storage tab):
    - `avatars` (public)
    - `attachments` (private)
    - `portfolios` (public)
 
-#### Get Credentials
-1. Go to Settings → API
-2. Copy your **Project URL** and **anon public key**
+4. (Optional) Update the **Reset Password email template** in Authentication > Email Templates to include `{{ .Token }}` for OTP codes
 
 ### 3. Configure Environment
 
-Update `.env` file:
+Create a `.env` file in the project root:
 
 ```env
 EXPO_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
 EXPO_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
+Get these from Supabase Dashboard > Settings > API.
+
 ### 4. Run the App
 
-#### Web (Recommended for testing)
 ```bash
+# Web
 npm run web
-```
 
-#### iOS (Requires macOS)
-```bash
+# iOS (requires macOS)
 npm run ios
-```
 
-#### Android
-```bash
+# Android
 npm run android
 ```
 
-## 🎨 Design System
+## Database Schema
 
-### Color Palette (from PRD)
-- **Primary** (Deep Blue): `#1E40AF` - Trust and professionalism
-- **Secondary** (Light Gray): `#F8FAFC` - Clean backgrounds
-- **Accent** (Green): `#10B981` - Success and CTAs
-- **Warning** (Amber): `#F59E0B` - Pending states
-- **Error** (Red): `#EF4444` - Errors and alerts
-
-### Typography
-- Headings: Inter (when loaded)
-- Body: System font stack
-
-### Touch Targets
-- Minimum 44px height for all interactive elements
-- Optimized for mobile-first usage
-
-## 📱 Service Categories
-
-22 categories with distance-based filtering:
-
-### Local Services (2 KM)
-- Plumbing, Electrical, Appliance Repair
-
-### City Services (30 KM)
-- House Painting, Pest Control, Cleaning, Landscaping, Carpentry, HVAC, Roofing, Moving, Photography
-
-### Online Services (Unlimited)
-- Web Development, Mobile Development, Graphic Design, Content Writing, Digital Marketing, Video Editing, Virtual Assistant, Business Consulting, Online Tutoring, Translation
-
-## 🔐 User Roles
-
-Users can register as:
-- **Buyer** - Post service requests, receive proposals
-- **Provider** - Browse opportunities, submit proposals
-- **Both** - Switch between buyer and provider modes
-
-## 📝 Database Schema
-
-See `supabase-schema.sql` for complete schema including:
-- `profiles` - User profiles
-- `provider_profiles` - Provider-specific data
-- `service_categories` - Service categories
-- `service_requests` - Service requests from buyers
-- `proposals` - Bids from providers
-- `projects` - Accepted proposals
-- `conversations` - Messaging threads
-- `messages` - Individual messages
-- `reviews` - User reviews (future)
+| Table | Description |
+|-------|-------------|
+| `profiles` | User profiles (name, role, location, avatar) |
+| `provider_profiles` | Provider data (skills, hourly rate, bio, rating, verification) |
+| `service_categories` | Service categories with distance limits |
+| `service_requests` | Buyer service requests |
+| `proposals` | Provider bids on requests |
+| `projects` | Accepted proposals become projects |
+| `conversations` | Messaging threads |
+| `messages` | Individual messages |
+| `notifications` | In-app notifications |
+| `push_tokens` | Device push notification tokens |
+| `regions` | Geographic regions |
+| `reviews` | User reviews and ratings |
 
 All tables have Row Level Security (RLS) enabled.
 
-## 🚧 Next Steps (Not Yet Implemented)
+## Service Categories
 
-The following features are planned but not yet built:
+Categories are grouped by service range:
 
-1. **Service Request Management** (Buyer)
-   - Post service requests with attachments
-   - View and manage requests
-   - Accept/reject proposals
+- **Local (2-5 KM)**: Plumbing, Electrical, Appliance Repair
+- **City (30 KM)**: House Painting, Pest Control, Cleaning, Landscaping, Carpentry, HVAC, Roofing, Moving, Photography
+- **Online (Unlimited)**: Web Development, Mobile Development, Graphic Design, Content Writing, Digital Marketing, Video Editing, Virtual Assistant, Business Consulting, Online Tutoring, Translation
 
-2. **Opportunity Browsing** (Provider)
-   - Browse available requests
-   - Filter by category, budget, distance
-   - Submit proposals
+## Tech Stack
 
-3. **Bidding System**
-   - Proposal creation and management
-   - Proposal comparison for buyers
-   - Status tracking
-
-4. **Messaging**
-   - Real-time chat with Supabase
-   - File sharing
-   - Read receipts
-
-5. **Project Management**
-   - Active project tracking
-   - Status updates
-   - Completion flow
-
-6. **Additional Features**
-   - Edit profile
-   - Provider portfolio
-   - Push notifications
-   - Advanced filters
-   - Reviews and ratings
-
-## 🧪 Testing
-
-### Manual Testing Checklist
-- [ ] Register as buyer
-- [ ] Register as provider
-- [ ] Register as both
-- [ ] Login with correct credentials
-- [ ] Login with incorrect credentials
-- [ ] Forgot password flow
-- [ ] Role switching (for "both" users)
-- [ ] Navigate through all tabs
-- [ ] Sign out
-- [ ] Auto-redirect when not authenticated
-
-### Known Limitations
-- No service request posting yet
-- No proposal system yet
-- No real-time messaging yet
-- Profile editing placeholder
-- No payment integration (per PRD - not in MVP)
-
-## 📚 Tech Stack
-
-- **Framework**: Expo SDK 54 with React Native Web
+- **Framework**: Expo SDK 54 + React Native
 - **Routing**: Expo Router (file-based)
 - **Styling**: NativeWind v4 (Tailwind CSS for React Native)
 - **Backend**: Supabase (Auth, PostgreSQL, Storage, Realtime)
 - **State**: Zustand
 - **Forms**: React Hook Form + Zod
 - **Icons**: @expo/vector-icons (FontAwesome)
-- **Utilities**: date-fns, clsx, tailwind-merge
+- **Notifications**: expo-notifications (mobile), in-app (web)
 
-## 🤝 Contributing
-
-This is an MVP in active development. See [PROGRESS.md](PROGRESS.md) for detailed implementation status.
-
-## 📄 License
+## License
 
 Private project - All rights reserved
-
----
-
-**Built with Expo + NativeWind + Supabase** 🚀
