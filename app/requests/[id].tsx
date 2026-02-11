@@ -1,8 +1,10 @@
 /**
  * Request Details Screen
+ * Shows request details, proposals, and handles proposal acceptance with contact info sharing.
+ * Uses Supabase for all data operations.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,44 +12,102 @@ import {
   TouchableOpacity,
   StyleSheet,
   Platform,
+  ActivityIndicator,
+  Linking,
 } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useCategoryLookup } from '@/lib/useCategoryLookup';
+import { supabase } from '@/lib/supabase';
+import { useAuthStore } from '@/store/authStore';
 import { useRoleStore } from '@/store/roleStore';
+import { saveNotificationRecord } from '@/lib/notifications/sendNotification';
 import { showAlert } from '@/utils/alert';
+
+// Colors
+const PRIMARY = '#E20010';
+const DARK = '#5F6267';
+const MEDIUM = '#B3B8C4';
+const BG = '#F7F8FA';
+const GREEN = '#10B981';
+const BORDER = '#E6E9EF';
+const MUTED = '#C5C4CC';
 
 export default function RequestDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { user } = useAuthStore();
   const { activeRole } = useRoleStore();
-  const { getCategoryById } = useCategoryLookup();
   const isBuyer = activeRole === 'buyer';
 
   const [request, setRequest] = useState<any>(null);
   const [proposals, setProposals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [accepting, setAccepting] = useState(false);
   const [expandedProposalId, setExpandedProposalId] = useState<string | null>(null);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [myProposal, setMyProposal] = useState<any>(null);
 
-  useEffect(() => {
-    loadRequestDetails();
-  }, [id]);
+  // Refresh data when screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      if (id) {
+        loadRequestDetails();
+      }
+    }, [id])
+  );
 
   const loadRequestDetails = async () => {
     try {
-      // Load request from AsyncStorage
-      const requestsJson = await AsyncStorage.getItem('my_requests');
-      if (requestsJson) {
-        const requests = JSON.parse(requestsJson);
-        const foundRequest = requests.find((r: any) => r.id === id);
-        setRequest(foundRequest);
+      setLoading(true);
+
+      // Load request with category and buyer profile
+      const { data: requestData, error: requestError } = await supabase
+        .from('service_requests')
+        .select('*, category:service_categories!category_id(id, name, icon), buyer:profiles!buyer_id(id, full_name, email, phone)')
+        .eq('id', id)
+        .single();
+
+      if (requestError) {
+        console.error('Error loading request:', requestError);
+        setRequest(null);
+        return;
       }
 
-      // Load proposals for this request
-      const proposalsJson = await AsyncStorage.getItem(`proposals_${id}`);
-      if (proposalsJson) {
-        const loadedProposals = JSON.parse(proposalsJson);
-        setProposals(loadedProposals);
+      setRequest(requestData);
+
+      // Load proposals with provider profiles
+      const { data: proposalsData, error: proposalsError } = await supabase
+        .from('proposals')
+        .select('*, provider:profiles!provider_id(id, full_name, email, phone, avatar_url)')
+        .eq('request_id', id)
+        .order('created_at', { ascending: false });
+
+      if (proposalsError) {
+        console.error('Error loading proposals:', proposalsError);
+      } else {
+        setProposals(proposalsData || []);
+
+        // If provider is viewing, find their proposal
+        if (!isBuyer && user) {
+          const mine = (proposalsData || []).find(
+            (p: any) => p.provider_id === user.id
+          );
+          setMyProposal(mine || null);
+        }
+      }
+
+      // Check for existing conversation (for the handoff card Message button)
+      if (requestData && requestData.status === 'in_progress' && user) {
+        const { data: convoData } = await supabase
+          .from('conversations')
+          .select('id')
+          .eq('request_id', id)
+          .or(`buyer_id.eq.${user.id},provider_id.eq.${user.id}`)
+          .limit(1)
+          .single();
+
+        if (convoData) {
+          setConversationId(convoData.id);
+        }
       }
     } catch (error) {
       console.error('Error loading request details:', error);
@@ -55,8 +115,6 @@ export default function RequestDetailScreen() {
       setLoading(false);
     }
   };
-
-  const category = request ? getCategoryById(request.category_id) : null;
 
   const getTimeAgo = (dateString: string) => {
     const date = new Date(dateString);
@@ -76,7 +134,7 @@ export default function RequestDetailScreen() {
   const handleAcceptProposal = async (proposal: any) => {
     showAlert(
       'Accept Proposal',
-      `Are you sure you want to accept the proposal from ${proposal.provider?.name || 'this provider'} for ₹${proposal.price?.toLocaleString()}?`,
+      `Are you sure you want to accept the proposal from ${proposal.provider?.full_name || 'this provider'} for ₹${proposal.price?.toLocaleString()}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -84,67 +142,88 @@ export default function RequestDetailScreen() {
           style: 'default',
           onPress: async () => {
             try {
-              // Create project
-              const newProject = {
-                id: `proj-${Date.now()}`,
-                request_id: request.id,
-                proposal_id: proposal.id,
-                request_title: request.title,
-                request_description: request.description,
-                category_id: request.category_id,
-                budget: proposal.price,
-                timeline: proposal.timeline,
-                provider_name: proposal.provider?.name || 'Provider',
-                provider_id: proposal.provider_id || 'provider-1',
-                buyer_name: request.buyer?.name || 'Buyer',
-                buyer_id: request.buyer_id || 'buyer-1',
-                status: 'active',
-                created_at: new Date().toISOString(),
-                milestones: [],
-              };
+              setAccepting(true);
 
-              // Save to projects in AsyncStorage
-              const projectsJson = await AsyncStorage.getItem('projects');
-              const projects = projectsJson ? JSON.parse(projectsJson) : [];
-              projects.unshift(newProject);
-              await AsyncStorage.setItem('projects', JSON.stringify(projects));
+              // a. Update accepted proposal status
+              const { error: acceptError } = await supabase
+                .from('proposals')
+                .update({ status: 'accepted' })
+                .eq('id', proposal.id);
 
-              // Update proposal status to 'accepted'
-              const updatedProposals = proposals.map((p: any) =>
-                p.id === proposal.id
-                  ? { ...p, status: 'accepted' }
-                  : p.status === 'pending'
-                  ? { ...p, status: 'rejected' } // Reject other pending proposals
-                  : p
-              );
-              await AsyncStorage.setItem(`proposals_${id}`, JSON.stringify(updatedProposals));
-              setProposals(updatedProposals);
+              if (acceptError) throw acceptError;
 
-              // Update request status to 'in_progress'
-              const requestsJson = await AsyncStorage.getItem('my_requests');
-              if (requestsJson) {
-                const requests = JSON.parse(requestsJson);
-                const updatedRequests = requests.map((r: any) =>
-                  r.id === request.id ? { ...r, status: 'in_progress' } : r
-                );
-                await AsyncStorage.setItem('my_requests', JSON.stringify(updatedRequests));
-                setRequest({ ...request, status: 'in_progress' });
+              // b. Reject all other pending proposals for this request
+              const { error: rejectError } = await supabase
+                .from('proposals')
+                .update({ status: 'rejected' })
+                .eq('request_id', id)
+                .eq('status', 'pending')
+                .neq('id', proposal.id);
+
+              if (rejectError) console.error('Error rejecting other proposals:', rejectError);
+
+              // c. Update request status to in_progress
+              const { error: requestUpdateError } = await supabase
+                .from('service_requests')
+                .update({ status: 'in_progress' })
+                .eq('id', id);
+
+              if (requestUpdateError) throw requestUpdateError;
+
+              // d. Create conversation between buyer and provider
+              const { data: convoData, error: convoError } = await supabase
+                .from('conversations')
+                .insert({
+                  request_id: id,
+                  buyer_id: user!.id,
+                  provider_id: proposal.provider_id,
+                  request_title: request.title,
+                })
+                .select('id')
+                .single();
+
+              if (convoError) {
+                console.error('Error creating conversation:', convoError);
+              } else if (convoData) {
+                setConversationId(convoData.id);
               }
+
+              // e. Send in-app notification to provider
+              await saveNotificationRecord(
+                proposal.provider_id,
+                'proposal_accepted',
+                'Proposal Accepted!',
+                `Your proposal for "${request.title}" has been accepted! Check the request details for buyer contact info.`,
+                { requestId: id }
+              );
+
+              // Notify rejected providers
+              const rejectedProposals = proposals.filter(
+                (p) => p.id !== proposal.id && p.status === 'pending'
+              );
+              for (const rp of rejectedProposals) {
+                await saveNotificationRecord(
+                  rp.provider_id,
+                  'proposal_rejected',
+                  'Proposal Update',
+                  `The request "${request.title}" has been awarded to another provider.`,
+                  { requestId: id }
+                );
+              }
+
+              // Refresh data to show handoff card
+              await loadRequestDetails();
 
               showAlert(
                 'Success!',
-                'Proposal accepted! Project created successfully.',
-                [
-                  {
-                    text: 'View Projects',
-                    onPress: () => router.push('/(tabs)/projects'),
-                  },
-                  { text: 'OK' },
-                ]
+                'Proposal accepted! You can now see contact details and message the provider.',
+                [{ text: 'OK' }]
               );
             } catch (error) {
               console.error('Error accepting proposal:', error);
               showAlert('Error', 'Failed to accept proposal. Please try again.');
+            } finally {
+              setAccepting(false);
             }
           },
         },
@@ -155,14 +234,37 @@ export default function RequestDetailScreen() {
   const handleRejectProposal = (proposal: any) => {
     showAlert(
       'Reject Proposal',
-      `Are you sure you want to reject the proposal from ${proposal.provider?.name || 'this provider'}?`,
+      `Are you sure you want to reject the proposal from ${proposal.provider?.full_name || 'this provider'}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Reject',
           style: 'destructive',
-          onPress: () => {
-            showAlert('Proposal Rejected', 'The provider has been notified.');
+          onPress: async () => {
+            try {
+              const { error } = await supabase
+                .from('proposals')
+                .update({ status: 'rejected' })
+                .eq('id', proposal.id);
+
+              if (error) throw error;
+
+              // Send notification to provider
+              await saveNotificationRecord(
+                proposal.provider_id,
+                'proposal_rejected',
+                'Proposal Rejected',
+                `Your proposal for "${request.title}" was not selected.`,
+                { requestId: id }
+              );
+
+              // Refresh proposals
+              await loadRequestDetails();
+              showAlert('Done', 'The proposal has been rejected and the provider has been notified.');
+            } catch (error) {
+              console.error('Error rejecting proposal:', error);
+              showAlert('Error', 'Failed to reject proposal. Please try again.');
+            }
           },
         },
       ]
@@ -174,12 +276,15 @@ export default function RequestDetailScreen() {
     router.push(`/proposals/new/${request.id}` as any);
   };
 
-  const handleMessage = (name: string) => {
-    showAlert('Message', `Messaging feature will open conversation with ${name}`);
+  const handleMessagePress = () => {
+    if (conversationId) {
+      router.push(`/messages/chat?conversationId=${conversationId}` as any);
+    } else {
+      showAlert('No Conversation', 'A conversation will be created once a proposal is accepted.');
+    }
   };
 
   const handleBackPress = () => {
-    // Try to go back, but fallback to My Requests if no history
     if (router.canGoBack()) {
       router.back();
     } else {
@@ -187,29 +292,60 @@ export default function RequestDetailScreen() {
     }
   };
 
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'open': return GREEN;
+      case 'in_progress': return '#F59E0B';
+      case 'completed': return MEDIUM;
+      case 'cancelled': return '#EF4444';
+      default: return MEDIUM;
+    }
+  };
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'open': return 'Open';
+      case 'in_progress': return 'In Progress';
+      case 'completed': return 'Completed';
+      case 'cancelled': return 'Cancelled';
+      default: return status;
+    }
+  };
+
+  const getLocationText = (location: any) => {
+    if (!location) return 'Online';
+    return location.city || location.address || 'Online';
+  };
+
+  // Find the accepted proposal for the handoff card
+  const acceptedProposal = proposals.find((p) => p.status === 'accepted');
+
+  // Loading state
   if (loading) {
     return (
       <View style={styles.container}>
         <View style={styles.header}>
           <TouchableOpacity onPress={handleBackPress} style={styles.headerBackButton}>
-            <FontAwesome name="arrow-left" size={20} color="#E20010" />
+            <FontAwesome name="arrow-left" size={20} color={PRIMARY} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Request Details</Text>
           <View style={{ width: 40 }} />
         </View>
         <View style={styles.errorContainer}>
-          <Text style={{ color: '#B3B8C4' }}>Loading...</Text>
+          <ActivityIndicator size="large" color={PRIMARY} />
+          <Text style={{ color: MEDIUM, marginTop: 12 }}>Loading...</Text>
         </View>
       </View>
     );
   }
 
+  // Not found state
   if (!request) {
     return (
       <View style={styles.container}>
         <View style={styles.header}>
           <TouchableOpacity onPress={handleBackPress} style={styles.headerBackButton}>
-            <FontAwesome name="arrow-left" size={20} color="#E20010" />
+            <FontAwesome name="arrow-left" size={20} color={PRIMARY} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Request Details</Text>
           <View style={{ width: 40 }} />
@@ -220,10 +356,7 @@ export default function RequestDetailScreen() {
           <Text style={styles.errorText}>
             The service request you're looking for doesn't exist.
           </Text>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={handleBackPress}
-          >
+          <TouchableOpacity style={styles.backButton} onPress={handleBackPress}>
             <Text style={styles.backButtonText}>Go Back</Text>
           </TouchableOpacity>
         </View>
@@ -231,36 +364,16 @@ export default function RequestDetailScreen() {
     );
   }
 
-  const getStatusColor = () => {
-    switch (request.status) {
-      case 'open': return '#10B981';
-      case 'in_progress': return '#F59E0B';
-      case 'completed': return '#B3B8C4';
-      case 'cancelled': return '#EF4444';
-      default: return '#B3B8C4';
-    }
-  };
-
-  const getStatusText = () => {
-    switch (request.status) {
-      case 'open': return 'Open';
-      case 'in_progress': return 'In Progress';
-      case 'completed': return 'Completed';
-      case 'cancelled': return 'Cancelled';
-      default: return request.status;
-    }
-  };
-
   return (
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={handleBackPress} style={styles.headerBackButton}>
-          <FontAwesome name="arrow-left" size={20} color="#E20010" />
+          <FontAwesome name="arrow-left" size={20} color={PRIMARY} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Request Details</Text>
         <TouchableOpacity style={styles.headerShareButton}>
-          <FontAwesome name="share-alt" size={18} color="#E20010" />
+          <FontAwesome name="share-alt" size={18} color={PRIMARY} />
         </TouchableOpacity>
       </View>
 
@@ -269,19 +382,102 @@ export default function RequestDetailScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
+        {/* Contact Info Handoff Card */}
+        {request.status === 'in_progress' && acceptedProposal && (
+          <View style={styles.handoffCard}>
+            <View style={styles.handoffHeader}>
+              <FontAwesome name="handshake-o" size={20} color={GREEN} />
+              <Text style={styles.handoffTitle}>Proposal Accepted - Contact Details</Text>
+            </View>
+
+            <View style={styles.handoffDivider} />
+
+            {/* Provider Info */}
+            <View style={styles.handoffParty}>
+              <Text style={styles.handoffPartyLabel}>Provider</Text>
+              <Text style={styles.handoffPartyName}>
+                {acceptedProposal.provider?.full_name || 'Provider'}
+              </Text>
+              {acceptedProposal.provider?.email && (
+                <TouchableOpacity
+                  style={styles.handoffContactRow}
+                  onPress={() => Linking.openURL(`mailto:${acceptedProposal.provider.email}`)}
+                >
+                  <FontAwesome name="envelope" size={14} color={PRIMARY} />
+                  <Text style={styles.handoffContactText}>
+                    {acceptedProposal.provider.email}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              {acceptedProposal.provider?.phone && (
+                <TouchableOpacity
+                  style={styles.handoffContactRow}
+                  onPress={() => Linking.openURL(`tel:${acceptedProposal.provider.phone}`)}
+                >
+                  <FontAwesome name="phone" size={14} color={PRIMARY} />
+                  <Text style={styles.handoffContactText}>
+                    {acceptedProposal.provider.phone}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <View style={styles.handoffDivider} />
+
+            {/* Buyer Info */}
+            <View style={styles.handoffParty}>
+              <Text style={styles.handoffPartyLabel}>Buyer</Text>
+              <Text style={styles.handoffPartyName}>
+                {request.buyer?.full_name || 'Buyer'}
+              </Text>
+              {request.buyer?.email && (
+                <TouchableOpacity
+                  style={styles.handoffContactRow}
+                  onPress={() => Linking.openURL(`mailto:${request.buyer.email}`)}
+                >
+                  <FontAwesome name="envelope" size={14} color={PRIMARY} />
+                  <Text style={styles.handoffContactText}>{request.buyer.email}</Text>
+                </TouchableOpacity>
+              )}
+              {request.buyer?.phone && (
+                <TouchableOpacity
+                  style={styles.handoffContactRow}
+                  onPress={() => Linking.openURL(`tel:${request.buyer.phone}`)}
+                >
+                  <FontAwesome name="phone" size={14} color={PRIMARY} />
+                  <Text style={styles.handoffContactText}>{request.buyer.phone}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <View style={styles.handoffDivider} />
+
+            <Text style={styles.handoffMessage}>
+              You can now contact each other directly to discuss and complete the service.
+            </Text>
+
+            <TouchableOpacity style={styles.handoffMessageButton} onPress={handleMessagePress}>
+              <FontAwesome name="comment" size={16} color="#FFFFFF" />
+              <Text style={styles.handoffMessageButtonText}>Message</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Main Request Card */}
         <View style={styles.requestCard}>
           <View style={styles.categoryRow}>
             <View style={styles.categoryBadge}>
               <FontAwesome
-                name={category?.icon as any || 'briefcase'}
+                name={(request.category?.icon as any) || 'briefcase'}
                 size={14}
-                color="#E20010"
+                color={PRIMARY}
               />
-              <Text style={styles.categoryText}>{category?.name || 'Other'}</Text>
+              <Text style={styles.categoryText}>
+                {request.category?.name || 'Other'}
+              </Text>
             </View>
-            <View style={[styles.statusBadge, { backgroundColor: getStatusColor() }]}>
-              <Text style={styles.statusText}>{getStatusText()}</Text>
+            <View style={[styles.statusBadge, { backgroundColor: getStatusColor(request.status) }]}>
+              <Text style={styles.statusText}>{getStatusText(request.status)}</Text>
             </View>
           </View>
 
@@ -299,7 +495,7 @@ export default function RequestDetailScreen() {
           <View style={styles.detailsGrid}>
             <View style={styles.detailItem}>
               <View style={styles.detailIcon}>
-                <FontAwesome name="money" size={18} color="#10B981" />
+                <FontAwesome name="money" size={18} color={GREEN} />
               </View>
               <View>
                 <Text style={styles.detailLabel}>Budget</Text>
@@ -309,21 +505,51 @@ export default function RequestDetailScreen() {
               </View>
             </View>
 
-            {request.when_needed && (
+            {request.timeline && (
               <View style={styles.detailItem}>
                 <View style={styles.detailIcon}>
                   <FontAwesome name="clock-o" size={18} color="#F59E0B" />
                 </View>
                 <View>
-                  <Text style={styles.detailLabel}>When Needed</Text>
-                  <Text style={styles.detailValue}>{request.when_needed}</Text>
+                  <Text style={styles.detailLabel}>Timeline</Text>
+                  <Text style={styles.detailValue}>{request.timeline}</Text>
+                </View>
+              </View>
+            )}
+
+            {request.deadline && (
+              <View style={styles.detailItem}>
+                <View style={styles.detailIcon}>
+                  <FontAwesome name="calendar-check-o" size={18} color="#EF4444" />
+                </View>
+                <View>
+                  <Text style={styles.detailLabel}>Deadline</Text>
+                  <Text style={styles.detailValue}>
+                    {new Date(request.deadline).toLocaleDateString('en-IN', {
+                      day: 'numeric',
+                      month: 'short',
+                      year: 'numeric',
+                    })}
+                  </Text>
                 </View>
               </View>
             )}
 
             <View style={styles.detailItem}>
               <View style={styles.detailIcon}>
-                <FontAwesome name="calendar" size={18} color="#B3B8C4" />
+                <FontAwesome name="map-marker" size={18} color={PRIMARY} />
+              </View>
+              <View>
+                <Text style={styles.detailLabel}>Location</Text>
+                <Text style={styles.detailValue}>
+                  {getLocationText(request.location)}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.detailItem}>
+              <View style={styles.detailIcon}>
+                <FontAwesome name="calendar" size={18} color={MEDIUM} />
               </View>
               <View>
                 <Text style={styles.detailLabel}>Posted</Text>
@@ -333,26 +559,6 @@ export default function RequestDetailScreen() {
               </View>
             </View>
           </View>
-
-          {/* Attachments */}
-          {request.attachments && request.attachments.length > 0 && (
-            <>
-              <View style={styles.divider} />
-              <Text style={styles.sectionTitle}>Attachments</Text>
-              <View>
-                {request.attachments.map((attachment: any, index: number) => (
-                  <View key={index} style={styles.detailItem}>
-                    <FontAwesome
-                      name={attachment.type === 'image' ? 'image' : 'file'}
-                      size={16}
-                      color="#B3B8C4"
-                    />
-                    <Text style={styles.detailValue}>{attachment.name}</Text>
-                  </View>
-                ))}
-              </View>
-            </>
-          )}
         </View>
 
         {/* Proposals Section (for buyers) */}
@@ -370,23 +576,31 @@ export default function RequestDetailScreen() {
                   <View style={styles.providerInfo}>
                     <View style={styles.providerAvatar}>
                       <Text style={styles.providerAvatarText}>
-                        {proposal.provider.name.charAt(0)}
+                        {(proposal.provider?.full_name || 'P').charAt(0).toUpperCase()}
                       </Text>
                     </View>
-                    <View>
-                      <Text style={styles.providerName}>{proposal.provider.name}</Text>
-                      <View style={styles.providerMeta}>
-                        <FontAwesome name="star" size={12} color="#F59E0B" />
-                        <Text style={styles.providerMetaText}>
-                          {proposal.provider.rating} ({proposal.provider.reviewCount})
-                        </Text>
-                        <Text style={styles.providerMetaText}>
-                          · {proposal.provider.completedJobs} jobs
-                        </Text>
-                      </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.providerName}>
+                        {proposal.provider?.full_name || 'Provider'}
+                      </Text>
+                      <Text style={styles.providerMetaText}>
+                        Submitted {proposal.created_at ? getTimeAgo(proposal.created_at) : 'recently'}
+                      </Text>
                     </View>
                   </View>
-                  <View style={[styles.proposalStatusBadge, { backgroundColor: proposal.status === 'pending' ? '#3B82F6' : proposal.status === 'accepted' ? '#10B981' : '#EF4444' }]}>
+                  <View
+                    style={[
+                      styles.proposalStatusBadge,
+                      {
+                        backgroundColor:
+                          proposal.status === 'pending'
+                            ? '#3B82F6'
+                            : proposal.status === 'accepted'
+                            ? GREEN
+                            : '#EF4444',
+                      },
+                    ]}
+                  >
                     <Text style={styles.proposalStatusText}>
                       {proposal.status.charAt(0).toUpperCase() + proposal.status.slice(1)}
                     </Text>
@@ -402,7 +616,9 @@ export default function RequestDetailScreen() {
                   </View>
                   <View style={styles.proposalDetailItem}>
                     <Text style={styles.proposalDetailLabel}>Timeline</Text>
-                    <Text style={styles.proposalDetailValue}>{proposal.timeline || 'N/A'}</Text>
+                    <Text style={styles.proposalDetailValue}>
+                      {proposal.timeline_estimate || 'N/A'}
+                    </Text>
                   </View>
                   <View style={styles.proposalDetailItem}>
                     <Text style={styles.proposalDetailLabel}>Submitted</Text>
@@ -413,49 +629,67 @@ export default function RequestDetailScreen() {
                 </View>
 
                 {/* Cover Letter (Expandable) */}
-                <TouchableOpacity
-                  style={styles.coverLetterToggle}
-                  onPress={() => setExpandedProposalId(
-                    expandedProposalId === proposal.id ? null : proposal.id
-                  )}
-                >
-                  <Text style={styles.coverLetterLabel}>Cover Letter</Text>
-                  <FontAwesome
-                    name={expandedProposalId === proposal.id ? 'chevron-up' : 'chevron-down'}
-                    size={14}
-                    color="#B3B8C4"
-                  />
-                </TouchableOpacity>
+                {proposal.cover_letter && (
+                  <>
+                    <TouchableOpacity
+                      style={styles.coverLetterToggle}
+                      onPress={() =>
+                        setExpandedProposalId(
+                          expandedProposalId === proposal.id ? null : proposal.id
+                        )
+                      }
+                    >
+                      <Text style={styles.coverLetterLabel}>Cover Letter</Text>
+                      <FontAwesome
+                        name={expandedProposalId === proposal.id ? 'chevron-up' : 'chevron-down'}
+                        size={14}
+                        color={MEDIUM}
+                      />
+                    </TouchableOpacity>
 
-                {expandedProposalId === proposal.id && (
-                  <View style={styles.coverLetterContent}>
-                    <Text style={styles.coverLetterText}>{proposal.cover_letter}</Text>
-                  </View>
+                    {expandedProposalId === proposal.id && (
+                      <View style={styles.coverLetterContent}>
+                        <Text style={styles.coverLetterText}>{proposal.cover_letter}</Text>
+                      </View>
+                    )}
+                  </>
                 )}
 
-                {/* Actions */}
-                {proposal.status === 'pending' && (
+                {/* Actions for pending proposals */}
+                {proposal.status === 'pending' && request.status === 'open' && (
                   <View style={styles.proposalActions}>
                     <TouchableOpacity
-                      style={styles.acceptButton}
+                      style={[styles.acceptButton, accepting && { opacity: 0.6 }]}
                       onPress={() => handleAcceptProposal(proposal)}
+                      disabled={accepting}
                     >
-                      <FontAwesome name="check" size={16} color="#FFFFFF" />
-                      <Text style={styles.acceptButtonText}>Accept</Text>
+                      {accepting ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <>
+                          <FontAwesome name="check" size={16} color="#FFFFFF" />
+                          <Text style={styles.acceptButtonText}>Accept</Text>
+                        </>
+                      )}
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.rejectButton}
                       onPress={() => handleRejectProposal(proposal)}
+                      disabled={accepting}
                     >
                       <FontAwesome name="times" size={16} color="#EF4444" />
                       <Text style={styles.rejectButtonText}>Reject</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.messageButtonSmall}
-                      onPress={() => handleMessage(proposal.provider.name)}
-                    >
-                      <FontAwesome name="comment" size={16} color="#E20010" />
-                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {/* Show accepted badge with contact hint */}
+                {proposal.status === 'accepted' && (
+                  <View style={styles.acceptedBanner}>
+                    <FontAwesome name="check-circle" size={16} color={GREEN} />
+                    <Text style={styles.acceptedBannerText}>
+                      Accepted - See contact details above
+                    </Text>
                   </View>
                 )}
               </View>
@@ -463,23 +697,79 @@ export default function RequestDetailScreen() {
           </View>
         )}
 
-        {/* Action Buttons (for providers) */}
-        {!isBuyer && request.status === 'open' && (
+        {/* No proposals message for buyers */}
+        {isBuyer && proposals.length === 0 && request.status === 'open' && (
+          <View style={styles.emptyProposals}>
+            <FontAwesome name="inbox" size={36} color={MEDIUM} />
+            <Text style={styles.emptyProposalsTitle}>No Proposals Yet</Text>
+            <Text style={styles.emptyProposalsText}>
+              Providers will start submitting proposals soon. Check back later!
+            </Text>
+          </View>
+        )}
+
+        {/* Provider View: Submit Proposal or Show Status */}
+        {!isBuyer && (
           <View style={styles.actionButtons}>
-            <TouchableOpacity
-              style={styles.submitProposalButton}
-              onPress={handleSubmitProposal}
-            >
-              <FontAwesome name="paper-plane" size={16} color="#FFFFFF" />
-              <Text style={styles.submitProposalButtonText}>Submit Proposal</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.messageButtonOutline}
-              onPress={() => handleMessage(request.buyer?.name || 'Buyer')}
-            >
-              <FontAwesome name="comment" size={16} color="#E20010" />
-              <Text style={styles.messageButtonOutlineText}>Message Buyer</Text>
-            </TouchableOpacity>
+            {request.status === 'open' && !myProposal && (
+              <TouchableOpacity
+                style={styles.submitProposalButton}
+                onPress={handleSubmitProposal}
+              >
+                <FontAwesome name="paper-plane" size={16} color="#FFFFFF" />
+                <Text style={styles.submitProposalButtonText}>Submit Proposal</Text>
+              </TouchableOpacity>
+            )}
+
+            {myProposal && (
+              <View style={styles.myProposalCard}>
+                <View style={styles.myProposalHeader}>
+                  <Text style={styles.myProposalTitle}>Your Proposal</Text>
+                  <View
+                    style={[
+                      styles.proposalStatusBadge,
+                      {
+                        backgroundColor:
+                          myProposal.status === 'pending'
+                            ? '#3B82F6'
+                            : myProposal.status === 'accepted'
+                            ? GREEN
+                            : '#EF4444',
+                      },
+                    ]}
+                  >
+                    <Text style={styles.proposalStatusText}>
+                      {myProposal.status.charAt(0).toUpperCase() + myProposal.status.slice(1)}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.proposalDetails}>
+                  <View style={styles.proposalDetailItem}>
+                    <Text style={styles.proposalDetailLabel}>Your Bid</Text>
+                    <Text style={styles.proposalDetailValue}>
+                      ₹{myProposal.price?.toLocaleString()}
+                    </Text>
+                  </View>
+                  <View style={styles.proposalDetailItem}>
+                    <Text style={styles.proposalDetailLabel}>Timeline</Text>
+                    <Text style={styles.proposalDetailValue}>
+                      {myProposal.timeline_estimate || 'N/A'}
+                    </Text>
+                  </View>
+                  <View style={styles.proposalDetailItem}>
+                    <Text style={styles.proposalDetailLabel}>Submitted</Text>
+                    <Text style={styles.proposalDetailValue}>
+                      {myProposal.created_at ? getTimeAgo(myProposal.created_at) : 'Recently'}
+                    </Text>
+                  </View>
+                </View>
+                {myProposal.cover_letter && (
+                  <View style={styles.coverLetterContent}>
+                    <Text style={styles.coverLetterText}>{myProposal.cover_letter}</Text>
+                  </View>
+                )}
+              </View>
+            )}
           </View>
         )}
       </ScrollView>
@@ -490,7 +780,7 @@ export default function RequestDetailScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F7F8FA',
+    backgroundColor: BG,
   },
   header: {
     flexDirection: 'row',
@@ -500,7 +790,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#E6E9EF',
+    borderBottomColor: BORDER,
   },
   headerBackButton: {
     width: 40,
@@ -511,7 +801,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#5F6267',
+    color: DARK,
   },
   headerShareButton: {
     width: 40,
@@ -526,13 +816,111 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 40,
   },
+
+  // Handoff Card
+  handoffCard: {
+    backgroundColor: '#ECFDF5',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 16,
+    borderWidth: 2,
+    borderColor: GREEN,
+    ...Platform.select({
+      web: {
+        boxShadow: '0 2px 8px 0 rgba(16, 185, 129, 0.15)',
+      },
+      default: {
+        shadowColor: GREEN,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.15,
+        shadowRadius: 8,
+        elevation: 4,
+      },
+    }),
+  },
+  handoffHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 4,
+  },
+  handoffTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#065F46',
+    flex: 1,
+  },
+  handoffDivider: {
+    height: 1,
+    backgroundColor: '#A7F3D0',
+    marginVertical: 12,
+  },
+  handoffParty: {
+    gap: 6,
+  },
+  handoffPartyLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: GREEN,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  handoffPartyName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#065F46',
+  },
+  handoffContactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 2,
+  },
+  handoffContactText: {
+    fontSize: 14,
+    color: '#047857',
+  },
+  handoffMessage: {
+    fontSize: 13,
+    color: '#065F46',
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  handoffMessageButton: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: GREEN,
+    paddingVertical: 12,
+    borderRadius: 8,
+    ...Platform.select({
+      web: {
+        boxShadow: '0 2px 4px 0 rgba(16, 185, 129, 0.3)',
+      },
+      default: {
+        shadowColor: GREEN,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
+        elevation: 3,
+      },
+    }),
+  },
+  handoffMessageButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+
+  // Request Card
   requestCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 8,
     padding: 20,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#E6E9EF',
+    borderColor: BORDER,
     ...Platform.select({
       web: {
         boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.04)',
@@ -563,7 +951,7 @@ const styles = StyleSheet.create({
   },
   categoryText: {
     fontSize: 12,
-    color: '#E20010',
+    color: PRIMARY,
     fontWeight: '600',
   },
   statusBadge: {
@@ -579,28 +967,28 @@ const styles = StyleSheet.create({
   requestTitle: {
     fontSize: 22,
     fontWeight: '700',
-    color: '#5F6267',
+    color: DARK,
     lineHeight: 30,
     marginBottom: 8,
   },
   postedTime: {
     fontSize: 13,
-    color: '#C5C4CC',
+    color: MUTED,
   },
   divider: {
     height: 1,
-    backgroundColor: '#E6E9EF',
+    backgroundColor: BORDER,
     marginVertical: 20,
   },
   sectionTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#5F6267',
+    color: DARK,
     marginBottom: 12,
   },
   description: {
     fontSize: 15,
-    color: '#5F6267',
+    color: DARK,
     lineHeight: 24,
   },
   detailsGrid: {
@@ -615,70 +1003,23 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#F7F8FA',
+    backgroundColor: BG,
     justifyContent: 'center',
     alignItems: 'center',
   },
   detailLabel: {
     fontSize: 12,
-    color: '#C5C4CC',
+    color: MUTED,
     fontWeight: '500',
     marginBottom: 4,
   },
   detailValue: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#5F6267',
+    color: DARK,
   },
-  buyerCard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#F7F8FA',
-    padding: 12,
-    borderRadius: 8,
-  },
-  buyerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  buyerAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#E20010',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  buyerAvatarText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  buyerName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#5F6267',
-    marginBottom: 4,
-  },
-  ratingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  ratingText: {
-    fontSize: 13,
-    color: '#B3B8C4',
-  },
-  messageButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#FFF0F1',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+
+  // Proposals Section
   proposalsSection: {
     marginBottom: 16,
   },
@@ -688,7 +1029,7 @@ const styles = StyleSheet.create({
   proposalsSectionTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#5F6267',
+    color: DARK,
   },
   proposalCard: {
     backgroundColor: '#FFFFFF',
@@ -696,7 +1037,7 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#E6E9EF',
+    borderColor: BORDER,
     ...Platform.select({
       web: {
         boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.04)',
@@ -726,7 +1067,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#10B981',
+    backgroundColor: GREEN,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -738,17 +1079,12 @@ const styles = StyleSheet.create({
   providerName: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#5F6267',
+    color: DARK,
     marginBottom: 4,
-  },
-  providerMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
   },
   providerMetaText: {
     fontSize: 12,
-    color: '#B3B8C4',
+    color: MEDIUM,
   },
   proposalStatusBadge: {
     paddingHorizontal: 8,
@@ -763,7 +1099,7 @@ const styles = StyleSheet.create({
   proposalDetails: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    backgroundColor: '#F7F8FA',
+    backgroundColor: BG,
     padding: 12,
     borderRadius: 8,
     marginBottom: 12,
@@ -773,14 +1109,14 @@ const styles = StyleSheet.create({
   },
   proposalDetailLabel: {
     fontSize: 11,
-    color: '#C5C4CC',
+    color: MUTED,
     fontWeight: '500',
     marginBottom: 4,
   },
   proposalDetailValue: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#5F6267',
+    color: DARK,
   },
   coverLetterToggle: {
     flexDirection: 'row',
@@ -791,10 +1127,10 @@ const styles = StyleSheet.create({
   coverLetterLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#5F6267',
+    color: DARK,
   },
   coverLetterContent: {
-    backgroundColor: '#F7F8FA',
+    backgroundColor: BG,
     padding: 12,
     borderRadius: 8,
     marginTop: 8,
@@ -802,7 +1138,7 @@ const styles = StyleSheet.create({
   },
   coverLetterText: {
     fontSize: 14,
-    color: '#5F6267',
+    color: DARK,
     lineHeight: 20,
   },
   proposalActions: {
@@ -816,7 +1152,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#10B981',
+    backgroundColor: GREEN,
     paddingVertical: 10,
     borderRadius: 8,
   },
@@ -842,14 +1178,45 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  messageButtonSmall: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
+  acceptedBanner: {
+    flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFF0F1',
+    gap: 8,
+    backgroundColor: '#ECFDF5',
+    padding: 10,
     borderRadius: 8,
+    marginTop: 4,
   },
+  acceptedBannerText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#065F46',
+  },
+
+  // Empty Proposals
+  emptyProposals: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 32,
+    marginBottom: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  emptyProposalsTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: DARK,
+    marginTop: 12,
+    marginBottom: 6,
+  },
+  emptyProposalsText: {
+    fontSize: 14,
+    color: MEDIUM,
+    textAlign: 'center',
+  },
+
+  // Provider Action Buttons
   actionButtons: {
     gap: 12,
   },
@@ -858,7 +1225,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: '#E20010',
+    backgroundColor: PRIMARY,
     paddingVertical: 16,
     borderRadius: 8,
     ...Platform.select({
@@ -866,7 +1233,7 @@ const styles = StyleSheet.create({
         boxShadow: '0 4px 6px -1px rgba(226, 0, 16, 0.25)',
       },
       default: {
-        shadowColor: '#E20010',
+        shadowColor: PRIMARY,
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.3,
         shadowRadius: 4,
@@ -879,22 +1246,40 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
-  messageButtonOutline: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
+
+  // My Proposal Card (provider view)
+  myProposalCard: {
     backgroundColor: '#FFFFFF',
-    borderWidth: 2,
-    borderColor: '#E20010',
-    paddingVertical: 14,
     borderRadius: 8,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: BORDER,
+    ...Platform.select({
+      web: {
+        boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.04)',
+      },
+      default: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.04,
+        shadowRadius: 3,
+        elevation: 2,
+      },
+    }),
   },
-  messageButtonOutlineText: {
-    color: '#E20010',
+  myProposalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  myProposalTitle: {
     fontSize: 16,
     fontWeight: '700',
+    color: DARK,
   },
+
+  // Error / Loading states
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -904,18 +1289,18 @@ const styles = StyleSheet.create({
   errorTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#5F6267',
+    color: DARK,
     marginTop: 16,
     marginBottom: 8,
   },
   errorText: {
     fontSize: 14,
-    color: '#B3B8C4',
+    color: MEDIUM,
     textAlign: 'center',
     marginBottom: 24,
   },
   backButton: {
-    backgroundColor: '#E20010',
+    backgroundColor: PRIMARY,
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,

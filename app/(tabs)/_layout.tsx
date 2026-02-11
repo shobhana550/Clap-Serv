@@ -162,13 +162,11 @@ export default function TabLayout() {
         }}
       />
 
-      {/* Projects Tab */}
+      {/* Projects Tab - Hidden (role ends at acceptance) */}
       <Tabs.Screen
         name="projects"
         options={{
-          title: 'Projects',
-          tabBarIcon: ({ color }) => <TabBarIcon name="briefcase" color={color} />,
-          headerTitle: 'My Projects',
+          href: null, // Hide from tab bar
         }}
       />
 

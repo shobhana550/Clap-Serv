@@ -1,5 +1,6 @@
 /**
  * Messages Screen - Shows conversations between buyers and providers
+ * Uses Supabase for data fetching
  */
 
 import React, { useState } from 'react';
@@ -14,7 +15,7 @@ import {
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
 
 export default function MessagesScreen() {
@@ -24,21 +25,25 @@ export default function MessagesScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const loadConversations = async () => {
+    if (!user?.id) {
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+
     try {
-      const conversationsJson = await AsyncStorage.getItem('conversations');
-      if (conversationsJson) {
-        const allConversations = JSON.parse(conversationsJson);
-        // Filter conversations where user is a participant
-        const userConversations = allConversations.filter(
-          (c: any) => c.buyer_id === user?.id || c.provider_id === user?.id
-        );
-        // Sort by last message time
-        userConversations.sort((a: any, b: any) => {
-          const aTime = a.last_message_at || a.created_at;
-          const bTime = b.last_message_at || b.created_at;
-          return new Date(bTime).getTime() - new Date(aTime).getTime();
-        });
-        setConversations(userConversations);
+      const { data, error } = await supabase
+        .from('conversations')
+        .select(
+          '*, buyer:profiles!buyer_id(id, full_name, avatar_url), provider:profiles!provider_id(id, full_name, avatar_url)'
+        )
+        .or(`buyer_id.eq.${user.id},provider_id.eq.${user.id}`)
+        .order('last_message_at', { ascending: false, nullsFirst: false });
+
+      if (error) {
+        console.error('Error loading conversations:', error);
+      } else {
+        setConversations(data || []);
       }
     } catch (error) {
       console.error('Error loading conversations:', error);
@@ -51,7 +56,7 @@ export default function MessagesScreen() {
   useFocusEffect(
     React.useCallback(() => {
       loadConversations();
-    }, [])
+    }, [user?.id])
   );
 
   const onRefresh = () => {
@@ -72,6 +77,16 @@ export default function MessagesScreen() {
     const days = Math.floor(hours / 24);
     if (days < 7) return `${days}d ago`;
     return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+  };
+
+  const getOtherPerson = (conversation: any) => {
+    const isUserBuyer = conversation.buyer_id === user?.id;
+    const otherProfile = isUserBuyer ? conversation.provider : conversation.buyer;
+    return {
+      name: otherProfile?.full_name || 'Unknown User',
+      avatarUrl: otherProfile?.avatar_url || null,
+      initial: otherProfile?.full_name?.charAt(0)?.toUpperCase() || 'U',
+    };
   };
 
   if (loading) {
@@ -104,29 +119,32 @@ export default function MessagesScreen() {
         ) : (
           <>
             {conversations.map((conversation) => {
-              const isUserBuyer = conversation.buyer_id === user?.id;
-              const otherPartyName = isUserBuyer
-                ? conversation.provider_name
-                : conversation.buyer_name;
+              const otherPerson = getOtherPerson(conversation);
               const unreadCount = conversation.unread_count || 0;
 
               return (
                 <TouchableOpacity
                   key={conversation.id}
                   style={styles.conversationCard}
-                  onPress={() => router.push(`/projects/${conversation.project_id}/chat`)}
+                  onPress={() =>
+                    router.push(
+                      '/messages/chat?conversationId=' + conversation.id
+                    )
+                  }
                 >
                   <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>
-                      {otherPartyName?.charAt(0) || 'U'}
-                    </Text>
+                    <Text style={styles.avatarText}>{otherPerson.initial}</Text>
                   </View>
 
                   <View style={styles.conversationContent}>
                     <View style={styles.conversationHeader}>
-                      <Text style={styles.conversationName}>{otherPartyName}</Text>
+                      <Text style={styles.conversationName}>
+                        {otherPerson.name}
+                      </Text>
                       <Text style={styles.conversationTime}>
-                        {getTimeAgo(conversation.last_message_at || conversation.created_at)}
+                        {getTimeAgo(
+                          conversation.last_message_at || conversation.created_at
+                        )}
                       </Text>
                     </View>
 
@@ -141,9 +159,14 @@ export default function MessagesScreen() {
                       )}
                     </View>
 
-                    {conversation.project_title && (
+                    {conversation.request_title && (
                       <Text style={styles.projectTitle} numberOfLines={1}>
-                        <FontAwesome name="briefcase" size={12} color="#B3B8C4" /> {conversation.project_title}
+                        <FontAwesome
+                          name="briefcase"
+                          size={12}
+                          color="#B3B8C4"
+                        />{' '}
+                        {conversation.request_title}
                       </Text>
                     )}
                   </View>

@@ -1,8 +1,9 @@
 /**
  * Submit Proposal Screen
+ * Fetches request from Supabase and inserts proposals into the proposals table.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,14 +12,16 @@ import {
   StyleSheet,
   Platform,
   TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { getRequestById } from '@/constants/DummyData';
-import { useCategoryLookup } from '@/lib/useCategoryLookup';
+import { supabase } from '@/lib/supabase';
+import { useAuthStore } from '@/store/authStore';
+import { saveNotificationRecord } from '@/lib/notifications/sendNotification';
 import { showAlert } from '@/utils/alert';
 
 // Validation schema
@@ -39,10 +42,41 @@ type ProposalFormData = z.infer<typeof proposalSchema>;
 export default function NewProposalScreen() {
   const { requestId } = useLocalSearchParams<{ requestId: string }>();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { categories: dbCategories } = useCategoryLookup();
+  const [loading, setLoading] = useState(true);
+  const [request, setRequest] = useState<any>(null);
+  const user = useAuthStore((state) => state.user);
 
-  const request = requestId ? getRequestById(requestId) : null;
-  const category = request ? dbCategories.find(cat => cat.id === request.category_id) : null;
+  // Fetch the service request from Supabase on mount
+  useEffect(() => {
+    if (!requestId) {
+      setLoading(false);
+      return;
+    }
+
+    const fetchRequest = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('service_requests')
+          .select('*, category:service_categories!category_id(id, name, icon)')
+          .eq('id', requestId)
+          .single();
+
+        if (error) {
+          console.error('Error fetching request:', error);
+          setRequest(null);
+        } else {
+          setRequest(data);
+        }
+      } catch (err) {
+        console.error('Error fetching request:', err);
+        setRequest(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchRequest();
+  }, [requestId]);
 
   const {
     control,
@@ -66,26 +100,53 @@ export default function NewProposalScreen() {
     if (price < request.budget_min || price > request.budget_max) {
       showAlert(
         'Price Warning',
-        `The buyer's budget is $${request.budget_min.toLocaleString()} - $${request.budget_max.toLocaleString()}. Your bid is outside this range. Are you sure you want to continue?`,
+        `The buyer's budget is \u20B9${Number(request.budget_min).toLocaleString('en-IN')} - \u20B9${Number(request.budget_max).toLocaleString('en-IN')}. Your bid is outside this range. Are you sure you want to continue?`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
             text: 'Submit Anyway',
-            onPress: () => submitProposal(),
+            onPress: () => submitProposal(data),
           },
         ]
       );
       return;
     }
 
-    submitProposal();
+    submitProposal(data);
   };
 
-  const submitProposal = () => {
+  const submitProposal = async (data: ProposalFormData) => {
+    if (!user || !requestId) return;
+
     setIsSubmitting(true);
 
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      const { error } = await supabase.from('proposals').insert({
+        request_id: requestId,
+        provider_id: user.id,
+        price: Number(data.price),
+        timeline_estimate: data.timeline,
+        cover_letter: data.cover_letter,
+      });
+
+      if (error) {
+        console.error('Error submitting proposal:', error);
+        setIsSubmitting(false);
+        showAlert('Error', 'Failed to submit your proposal. Please try again.');
+        return;
+      }
+
+      // Notify the buyer about the new proposal
+      if (request.buyer_id) {
+        await saveNotificationRecord(
+          request.buyer_id,
+          'proposal',
+          'New Proposal Received',
+          `A provider has submitted a proposal for "${request.title}"`,
+          { type: 'proposal', requestId }
+        );
+      }
+
       setIsSubmitting(false);
       showAlert(
         'Success!',
@@ -97,8 +158,31 @@ export default function NewProposalScreen() {
           },
         ]
       );
-    }, 1000);
+    } catch (err) {
+      console.error('Error submitting proposal:', err);
+      setIsSubmitting(false);
+      showAlert('Error', 'An unexpected error occurred. Please try again.');
+    }
   };
+
+  // Loading state while fetching the request
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.headerBackButton}>
+            <FontAwesome name="arrow-left" size={20} color="#E20010" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Submit Proposal</Text>
+          <View style={{ width: 40 }} />
+        </View>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#E20010" />
+          <Text style={styles.loadingText}>Loading request details...</Text>
+        </View>
+      </View>
+    );
+  }
 
   if (!request) {
     return (
@@ -119,6 +203,8 @@ export default function NewProposalScreen() {
       </View>
     );
   }
+
+  const locationDisplay = request.location?.city || request.location?.address || 'Online';
 
   return (
     <View style={styles.container}>
@@ -141,11 +227,11 @@ export default function NewProposalScreen() {
           <View style={styles.requestHeader}>
             <View style={styles.categoryBadge}>
               <FontAwesome
-                name={category?.icon as any || 'briefcase'}
+                name={request.category?.icon as any || 'briefcase'}
                 size={14}
                 color="#E20010"
               />
-              <Text style={styles.categoryText}>{category?.name || 'Other'}</Text>
+              <Text style={styles.categoryText}>{request.category?.name || 'Other'}</Text>
             </View>
           </View>
           <Text style={styles.requestTitle}>{request.title}</Text>
@@ -154,9 +240,9 @@ export default function NewProposalScreen() {
           </Text>
           <View style={styles.requestMeta}>
             <View style={styles.metaItem}>
-              <FontAwesome name="dollar" size={14} color="#10B981" />
+              <FontAwesome name="rupee" size={14} color="#10B981" />
               <Text style={styles.metaText}>
-                ${request.budget_min.toLocaleString()} - ${request.budget_max.toLocaleString()}
+                {'\u20B9'}{Number(request.budget_min).toLocaleString('en-IN')} - {'\u20B9'}{Number(request.budget_max).toLocaleString('en-IN')}
               </Text>
             </View>
             <View style={styles.metaItem}>
@@ -165,7 +251,7 @@ export default function NewProposalScreen() {
             </View>
             <View style={styles.metaItem}>
               <FontAwesome name="map-marker" size={14} color="#B3B8C4" />
-              <Text style={styles.metaText}>{request.location}</Text>
+              <Text style={styles.metaText}>{locationDisplay}</Text>
             </View>
           </View>
         </View>
@@ -184,7 +270,7 @@ export default function NewProposalScreen() {
               name="price"
               render={({ field: { onChange, onBlur, value } }) => (
                 <View style={styles.currencyInput}>
-                  <Text style={styles.currencySymbol}>$</Text>
+                  <Text style={styles.currencySymbol}>{'\u20B9'}</Text>
                   <TextInput
                     style={[
                       styles.currencyField,
@@ -204,7 +290,7 @@ export default function NewProposalScreen() {
               <Text style={styles.errorText}>{errors.price.message}</Text>
             )}
             <Text style={styles.helperText}>
-              Buyer's budget: ${request.budget_min.toLocaleString()} - ${request.budget_max.toLocaleString()}
+              Buyer's budget: {'\u20B9'}{Number(request.budget_min).toLocaleString('en-IN')} - {'\u20B9'}{Number(request.budget_max).toLocaleString('en-IN')}
             </Text>
           </View>
 
@@ -337,6 +423,17 @@ const styles = StyleSheet.create({
   content: {
     padding: 20,
     paddingBottom: 40,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: '#B3B8C4',
+    marginTop: 8,
   },
   requestCard: {
     backgroundColor: '#FFFFFF',
