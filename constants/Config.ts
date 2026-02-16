@@ -42,14 +42,7 @@ export const Config = {
     WITHDRAWN: 'withdrawn',
   } as const,
 
-  // Project statuses
-  projectStatus: {
-    ACTIVE: 'active',
-    COMPLETED: 'completed',
-    CANCELLED: 'cancelled',
-  } as const,
-
-  // File upload
+  // File upload (service requests)
   fileUpload: {
     maxSizeInMB: 10,
     maxSizeInBytes: 10 * 1024 * 1024, // 10 MB
@@ -62,6 +55,18 @@ export const Config = {
     ],
     maxImagesPerRequest: 5,
     maxDocumentsPerRequest: 3,
+  },
+
+  // Chat file upload
+  chatFileUpload: {
+    maxImageSizeInMB: 5,
+    maxImageSizeInBytes: 5 * 1024 * 1024, // 5 MB
+    maxVideoSizeInMB: 20,
+    maxVideoSizeInBytes: 20 * 1024 * 1024, // 20 MB
+    allowedImageTypes: ['image/jpeg', 'image/png', 'image/jpg', 'image/webp', 'image/gif'],
+    allowedVideoTypes: ['video/mp4', 'video/quicktime', 'video/x-m4v'],
+    maxAttachmentsPerMessage: 5,
+    storageBucket: 'chat-attachments',
   },
 
   // Location and distance
@@ -168,5 +173,4 @@ export const Config = {
 export type UserRole = typeof Config.userRoles[keyof typeof Config.userRoles];
 export type RequestStatus = typeof Config.requestStatus[keyof typeof Config.requestStatus];
 export type ProposalStatus = typeof Config.proposalStatus[keyof typeof Config.proposalStatus];
-export type ProjectStatus = typeof Config.projectStatus[keyof typeof Config.projectStatus];
 export type NotificationType = typeof Config.notifications.types[keyof typeof Config.notifications.types];

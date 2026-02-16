@@ -70,9 +70,9 @@ export default function AdminRequestsScreen() {
 
   const formatBudget = (min?: number, max?: number) => {
     if (!min && !max) return 'Not set';
-    if (min && max) return `$${min} - $${max}`;
-    if (min) return `From $${min}`;
-    return `Up to $${max}`;
+    if (min && max) return `\u20B9${min.toLocaleString('en-IN')} - \u20B9${max.toLocaleString('en-IN')}`;
+    if (min) return `From \u20B9${min.toLocaleString('en-IN')}`;
+    return `Up to \u20B9${(max as number).toLocaleString('en-IN')}`;
   };
 
   return (

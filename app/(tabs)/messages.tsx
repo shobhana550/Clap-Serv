@@ -150,7 +150,12 @@ export default function MessagesScreen() {
 
                     <View style={styles.conversationFooter}>
                       <Text style={styles.lastMessage} numberOfLines={1}>
-                        {conversation.last_message || 'No messages yet'}
+                        {conversation.last_message?.match(/^Sent \d+ attachment\(s\)$/)
+                          ? <>
+                              <FontAwesome name="paperclip" size={13} color="#B3B8C4" />{' '}
+                              {conversation.last_message}
+                            </>
+                          : conversation.last_message || 'No messages yet'}
                       </Text>
                       {unreadCount > 0 && (
                         <View style={styles.unreadBadge}>

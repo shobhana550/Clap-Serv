@@ -117,9 +117,9 @@ export default function ProfileScreen() {
           </View>
 
           <View style={styles.infoRow}>
-            <FontAwesome name="dollar" size={18} color="#10B981" />
+            <FontAwesome name="rupee" size={18} color="#10B981" />
             <Text style={styles.infoText}>
-              Hourly Rate: ${providerProfile?.hourly_rate || 'Not set'}
+              Hourly Rate: {providerProfile?.hourly_rate ? `\u20B9${providerProfile.hourly_rate}` : 'Not set'}
             </Text>
           </View>
 

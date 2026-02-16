@@ -111,15 +111,14 @@ export default function DashboardScreen() {
           .eq('provider_id', user.id)
           .in('status', ['pending', 'accepted']);
 
-        // Active Projects: projects where provider_id = user.id and status = 'active'
-        const { count: activeProjects } = await supabase
-          .from('projects')
+        // Active Conversations: conversations where provider_id = user.id
+        const { count: activeConversations } = await supabase
+          .from('conversations')
           .select('*', { count: 'exact', head: true })
-          .eq('provider_id', user.id)
-          .eq('status', 'active');
+          .eq('provider_id', user.id);
 
         setStat1(activeBids || 0);
-        setStat2(activeProjects || 0);
+        setStat2(activeConversations || 0);
 
         // Recent activity: 3 most recent proposals for provider
         const { data: recentProposals } = await supabase
@@ -132,6 +131,7 @@ export default function DashboardScreen() {
         setRecentActivity(
           (recentProposals || []).map((p: any) => ({
             id: p.id,
+            request_id: p.request_id,
             title: (p.service_requests as any)?.title || 'Proposal',
             status: p.status,
             date: p.created_at,
@@ -219,7 +219,7 @@ export default function DashboardScreen() {
             <View style={styles.statCard}>
               <Text style={[styles.statNumber, { color: '#10B981' }]}>{loading ? '-' : stat2}</Text>
               <Text style={styles.statLabel}>
-                {isBuyer ? 'Proposals' : 'Projects'}
+                {isBuyer ? 'Proposals' : 'Conversations'}
               </Text>
             </View>
           </View>
@@ -299,7 +299,7 @@ export default function DashboardScreen() {
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  onPress={() => router.push('/proposals/index')}
+                  onPress={() => router.push('/proposals' as any)}
                   style={styles.actionCard}
                 >
                   <View style={styles.actionCardContent}>
@@ -342,7 +342,7 @@ export default function DashboardScreen() {
                       if (item.type === 'request') {
                         router.push(`/requests/${item.id}` as any);
                       } else {
-                        router.push(`/proposals/${item.id}` as any);
+                        router.push(`/requests/${item.request_id || item.id}` as any);
                       }
                     }}
                   >

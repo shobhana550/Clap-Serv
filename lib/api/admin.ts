@@ -146,18 +146,16 @@ export const setRegionCategories = async (regionId: string, categoryIds: string[
 // ===== Stats =====
 
 export const getAdminStats = async () => {
-  const [users, providers, requests, projects] = await Promise.all([
+  const [users, providers, requests] = await Promise.all([
     supabase.from('profiles').select('id', { count: 'exact', head: true }),
     supabase.from('provider_profiles').select('user_id', { count: 'exact', head: true }),
     supabase.from('service_requests').select('id', { count: 'exact', head: true }),
-    supabase.from('projects').select('id', { count: 'exact', head: true }),
   ]);
 
   return {
     totalUsers: users.count || 0,
     totalProviders: providers.count || 0,
     totalRequests: requests.count || 0,
-    totalProjects: projects.count || 0,
   };
 };
 
@@ -174,17 +172,6 @@ export const getRequests = async (search?: string) => {
   }
 
   const { data, error } = await query;
-  return { data, error };
-};
-
-// ===== Projects Management =====
-
-export const getProjects = async () => {
-  const { data, error } = await supabase
-    .from('projects')
-    .select('*, buyer:profiles!buyer_id(full_name, email), provider:profiles!provider_id(full_name, email), request:service_requests!request_id(title)')
-    .order('created_at', { ascending: false });
-
   return { data, error };
 };
 

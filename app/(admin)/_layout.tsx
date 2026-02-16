@@ -110,14 +110,6 @@ export default function AdminLayout() {
 
         <TouchableOpacity
           style={styles.navItem}
-          onPress={() => router.push('/(admin)/projects' as any)}
-        >
-          <FontAwesome name="folder" size={16} color="#5F6267" />
-          <Text style={styles.navText}>Projects</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.navItem}
           onPress={() => router.push('/(admin)/categories')}
         >
           <FontAwesome name="th-list" size={16} color="#5F6267" />

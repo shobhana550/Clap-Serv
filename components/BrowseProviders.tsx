@@ -373,7 +373,7 @@ export default function BrowseProviders() {
                 <View style={styles.cardFooter}>
                   {provider.hourly_rate ? (
                     <Text style={styles.hourlyRate}>
-                      ${provider.hourly_rate}/hr
+                      {'\u20B9'}{provider.hourly_rate}/hr
                     </Text>
                   ) : (
                     <View />

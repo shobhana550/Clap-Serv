@@ -59,9 +59,9 @@ export const RequestCard: React.FC<RequestCardProps> = ({ request }) => {
 
       <View style={styles.footer}>
         <View style={styles.budgetContainer}>
-          <FontAwesome name="dollar" size={13} color="#10B981" />
+          <FontAwesome name="rupee" size={13} color="#10B981" />
           <Text style={styles.budgetText}>
-            ${request.budget_min.toLocaleString()} - ${request.budget_max.toLocaleString()}
+            {'\u20B9'}{request.budget_min.toLocaleString('en-IN')} - {'\u20B9'}{request.budget_max.toLocaleString('en-IN')}
           </Text>
         </View>
         <View style={styles.locationContainer}>

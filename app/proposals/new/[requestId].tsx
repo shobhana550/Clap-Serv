@@ -33,8 +33,9 @@ const proposalSchema = z.object({
     .min(1, 'Timeline is required')
     .max(100, 'Timeline must be less than 100 characters'),
   cover_letter: z.string()
-    .min(100, 'Cover letter must be at least 100 characters')
-    .max(2000, 'Cover letter must be less than 2000 characters'),
+    .max(2000, 'Cover letter must be less than 2000 characters')
+    .optional()
+    .or(z.literal('')),
 });
 
 type ProposalFormData = z.infer<typeof proposalSchema>;
@@ -126,7 +127,7 @@ export default function NewProposalScreen() {
         provider_id: user.id,
         price: Number(data.price),
         timeline_estimate: data.timeline,
-        cover_letter: data.cover_letter,
+        cover_letter: data.cover_letter || '',
       });
 
       if (error) {
@@ -324,7 +325,7 @@ export default function NewProposalScreen() {
           {/* Cover Letter */}
           <View style={styles.formGroup}>
             <Text style={styles.label}>
-              Cover Letter <Text style={styles.required}>*</Text>
+              Cover Letter <Text style={{ color: '#B3B8C4', fontSize: 12 }}>(Optional)</Text>
             </Text>
             <Controller
               control={control}

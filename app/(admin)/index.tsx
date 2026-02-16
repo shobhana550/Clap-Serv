@@ -16,7 +16,7 @@ interface AdminStats {
   totalUsers: number;
   totalProviders: number;
   totalRequests: number;
-  totalProjects: number;
+  totalProjects?: number;
 }
 
 interface StatCard {
@@ -65,12 +65,6 @@ export default function AdminDashboard() {
           label: 'Total Requests',
           value: stats.totalRequests,
           route: '/(admin)/requests',
-        },
-        {
-          icon: 'folder',
-          label: 'Total Projects',
-          value: stats.totalProjects,
-          route: '/(admin)/projects',
         },
       ]
     : [];

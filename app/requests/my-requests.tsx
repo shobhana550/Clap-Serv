@@ -261,9 +261,9 @@ export default function MyRequestsScreen() {
 
                   <View style={styles.requestFooter}>
                     <View style={styles.budgetContainer}>
-                      <FontAwesome name="money" size={13} color="#B3B8C4" />
+                      <FontAwesome name="rupee" size={13} color="#B3B8C4" />
                       <Text style={styles.budgetText}>
-                        ${request.budget_min} - ${request.budget_max}
+                        {'\u20B9'}{request.budget_min?.toLocaleString('en-IN')} - {'\u20B9'}{request.budget_max?.toLocaleString('en-IN')}
                       </Text>
                     </View>
                     <View style={styles.proposalCount}>

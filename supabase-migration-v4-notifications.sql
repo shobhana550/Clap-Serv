@@ -36,8 +36,13 @@ CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created
 ALTER TABLE push_tokens ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 
--- 5. RLS Policies for push_tokens
--- Users can manage their own push tokens
+-- 5. RLS Policies for push_tokens (drop first to make re-runnable)
+DROP POLICY IF EXISTS "Users can view their own push tokens" ON push_tokens;
+DROP POLICY IF EXISTS "Users can insert their own push tokens" ON push_tokens;
+DROP POLICY IF EXISTS "Users can update their own push tokens" ON push_tokens;
+DROP POLICY IF EXISTS "Users can delete their own push tokens" ON push_tokens;
+DROP POLICY IF EXISTS "Authenticated users can read push tokens for notifications" ON push_tokens;
+
 CREATE POLICY "Users can view their own push tokens"
   ON push_tokens FOR SELECT
   USING (auth.uid() = user_id);
@@ -54,29 +59,29 @@ CREATE POLICY "Users can delete their own push tokens"
   ON push_tokens FOR DELETE
   USING (auth.uid() = user_id);
 
--- 6. RLS Policies for notifications
--- Users can view their own notifications
+-- 6. RLS Policies for notifications (drop first to make re-runnable)
+DROP POLICY IF EXISTS "Users can view their own notifications" ON notifications;
+DROP POLICY IF EXISTS "Authenticated users can insert notifications" ON notifications;
+DROP POLICY IF EXISTS "Users can update their own notifications" ON notifications;
+DROP POLICY IF EXISTS "Users can delete their own notifications" ON notifications;
+
 CREATE POLICY "Users can view their own notifications"
   ON notifications FOR SELECT
   USING (auth.uid() = user_id);
 
--- Any authenticated user can insert notifications (needed for sending notifications to other users)
 CREATE POLICY "Authenticated users can insert notifications"
   ON notifications FOR INSERT
   WITH CHECK (auth.uid() IS NOT NULL);
 
--- Users can update their own notifications (mark as read)
 CREATE POLICY "Users can update their own notifications"
   ON notifications FOR UPDATE
   USING (auth.uid() = user_id);
 
--- Users can delete their own notifications
 CREATE POLICY "Users can delete their own notifications"
   ON notifications FOR DELETE
   USING (auth.uid() = user_id);
 
 -- 7. RLS Policy: Allow any authenticated user to READ push tokens
--- This is needed so the notification sender can look up tokens for other users
 CREATE POLICY "Authenticated users can read push tokens for notifications"
   ON push_tokens FOR SELECT
   USING (auth.uid() IS NOT NULL);
@@ -93,8 +98,9 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS notification_preferences JSONB DEF
 -- 9. Add is_verified column to provider_profiles for admin verification
 ALTER TABLE provider_profiles ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT FALSE;
 
--- 10. Allow admins to update provider verification status
--- (Admins are identified by profiles.is_admin = true)
+-- 10. Allow admins to update provider verification status (drop first to make re-runnable)
+DROP POLICY IF EXISTS "Admins can update provider profiles" ON provider_profiles;
+
 CREATE POLICY "Admins can update provider profiles"
   ON provider_profiles FOR UPDATE
   USING (

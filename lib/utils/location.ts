@@ -71,12 +71,26 @@ export const getCurrentLocation = async (): Promise<Location | null> => {
 
 /**
  * Get location using browser's geolocation API (web only)
+ * Falls back to IP-based geolocation if browser API fails
  */
 const getWebLocation = (): Promise<Location | null> => {
   return new Promise((resolve) => {
-    if (!navigator.geolocation) {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
       console.log('Geolocation not supported in this browser');
-      resolve(null);
+      getIpBasedLocation().then(resolve);
+      return;
+    }
+
+    // Geolocation requires HTTPS or localhost
+    const isSecure = typeof window !== 'undefined' && (
+      window.location.protocol === 'https:' ||
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1'
+    );
+
+    if (!isSecure) {
+      console.log('Geolocation requires HTTPS. Using IP-based fallback.');
+      getIpBasedLocation().then(resolve);
       return;
     }
 
@@ -88,12 +102,40 @@ const getWebLocation = (): Promise<Location | null> => {
         });
       },
       (error) => {
-        console.error('Browser geolocation error:', error.message);
-        resolve(null);
+        console.error('Browser geolocation error:', error.code, error.message);
+        getIpBasedLocation().then(resolve);
       },
-      { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 }
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
     );
   });
+};
+
+/**
+ * IP-based geolocation fallback for web
+ */
+const getIpBasedLocation = async (): Promise<Location | null> => {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    const response = await fetch('https://ipapi.co/json/', { signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (data.latitude && data.longitude) {
+      return {
+        lat: data.latitude,
+        lng: data.longitude,
+        city: data.city || undefined,
+        state: data.region || undefined,
+        country: data.country_name || undefined,
+        postalCode: data.postal || undefined,
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error('IP-based geolocation failed:', error);
+    return null;
+  }
 };
 
 /**

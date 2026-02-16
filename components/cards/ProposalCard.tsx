@@ -66,10 +66,10 @@ export const ProposalCard: React.FC<ProposalCardProps> = ({ proposal }) => {
       <View style={styles.detailsContainer}>
         <View style={styles.detailRow}>
           <View style={styles.detailItem}>
-            <FontAwesome name="dollar" size={16} color="#10B981" />
+            <FontAwesome name="rupee" size={16} color="#10B981" />
             <View>
               <Text style={styles.detailLabel}>Your Bid</Text>
-              <Text style={styles.detailValue}>${proposal.price.toLocaleString()}</Text>
+              <Text style={styles.detailValue}>{'\u20B9'}{proposal.price.toLocaleString('en-IN')}</Text>
             </View>
           </View>
           <View style={styles.detailItem}>

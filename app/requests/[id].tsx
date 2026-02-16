@@ -14,6 +14,8 @@ import {
   Platform,
   ActivityIndicator,
   Linking,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
@@ -45,6 +47,13 @@ export default function RequestDetailScreen() {
   const [expandedProposalId, setExpandedProposalId] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [myProposal, setMyProposal] = useState<any>(null);
+
+  // Rating state
+  const [showRatingModal, setShowRatingModal] = useState(false);
+  const [ratingStars, setRatingStars] = useState(0);
+  const [ratingComment, setRatingComment] = useState('');
+  const [submittingRating, setSubmittingRating] = useState(false);
+  const [existingReview, setExistingReview] = useState<any>(null);
 
   // Refresh data when screen is focused
   useFocusEffect(
@@ -108,6 +117,18 @@ export default function RequestDetailScreen() {
         if (convoData) {
           setConversationId(convoData.id);
         }
+      }
+
+      // Check if buyer already reviewed the provider for this request
+      if (user) {
+        const { data: reviewData } = await supabase
+          .from('reviews')
+          .select('*')
+          .eq('request_id', id)
+          .eq('reviewer_id', user.id)
+          .maybeSingle();
+
+        setExistingReview(reviewData || null);
       }
     } catch (error) {
       console.error('Error loading request details:', error);
@@ -284,11 +305,109 @@ export default function RequestDetailScreen() {
     }
   };
 
+  const handleChatWithProvider = async (proposal: any) => {
+    if (!user || !request) return;
+
+    try {
+      // Check if conversation already exists for this request + provider
+      const { data: existingConvo } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('request_id', id)
+        .eq('buyer_id', user.id)
+        .eq('provider_id', proposal.provider_id)
+        .limit(1)
+        .maybeSingle();
+
+      if (existingConvo) {
+        router.push(`/messages/chat?conversationId=${existingConvo.id}` as any);
+        return;
+      }
+
+      // Create new conversation
+      const { data: newConvo, error } = await supabase
+        .from('conversations')
+        .insert({
+          request_id: id,
+          buyer_id: user.id,
+          provider_id: proposal.provider_id,
+          request_title: request.title,
+        })
+        .select('id')
+        .single();
+
+      if (error) throw error;
+
+      router.push(`/messages/chat?conversationId=${newConvo.id}` as any);
+    } catch (error) {
+      console.error('Error creating conversation:', error);
+      showAlert('Error', 'Failed to start chat. Please try again.');
+    }
+  };
+
   const handleBackPress = () => {
     if (router.canGoBack()) {
       router.back();
     } else {
       router.push('/requests/my-requests');
+    }
+  };
+
+  const handleSubmitRating = async () => {
+    if (!ratingStars || !acceptedProposal || !user) return;
+
+    setSubmittingRating(true);
+    try {
+      // Insert review
+      const { error: reviewError } = await supabase.from('reviews').insert({
+        request_id: id,
+        reviewer_id: user.id,
+        provider_id: acceptedProposal.provider_id,
+        rating: ratingStars,
+        comment: ratingComment.trim() || null,
+      });
+
+      if (reviewError) throw reviewError;
+
+      // Recalculate provider's average rating
+      const { data: allReviews } = await supabase
+        .from('reviews')
+        .select('rating')
+        .eq('provider_id', acceptedProposal.provider_id);
+
+      if (allReviews && allReviews.length > 0) {
+        const avgRating =
+          allReviews.reduce((sum: number, r: any) => sum + r.rating, 0) / allReviews.length;
+
+        await supabase
+          .from('provider_profiles')
+          .update({
+            rating: Math.round(avgRating * 10) / 10,
+            total_reviews: allReviews.length,
+          })
+          .eq('user_id', acceptedProposal.provider_id);
+      }
+
+      // Notify provider
+      await saveNotificationRecord(
+        acceptedProposal.provider_id,
+        'review',
+        'New Review Received',
+        `You received a ${ratingStars}-star review for "${request.title}"`,
+        { requestId: id }
+      );
+
+      setShowRatingModal(false);
+      setRatingStars(0);
+      setRatingComment('');
+      await loadRequestDetails();
+
+      showAlert('Thank You!', 'Your rating has been submitted successfully.');
+    } catch (error) {
+      console.error('Error submitting rating:', error);
+      showAlert('Error', 'Failed to submit rating. Please try again.');
+    } finally {
+      setSubmittingRating(false);
     }
   };
 
@@ -460,6 +579,44 @@ export default function RequestDetailScreen() {
               <FontAwesome name="comment" size={16} color="#FFFFFF" />
               <Text style={styles.handoffMessageButtonText}>Message</Text>
             </TouchableOpacity>
+
+            {/* Rating Section */}
+            {isBuyer && !existingReview && (
+              <>
+                <View style={styles.handoffDivider} />
+                <TouchableOpacity
+                  style={styles.rateProviderButton}
+                  onPress={() => setShowRatingModal(true)}
+                >
+                  <FontAwesome name="star" size={16} color="#F59E0B" />
+                  <Text style={styles.rateProviderButtonText}>Rate Provider</Text>
+                </TouchableOpacity>
+              </>
+            )}
+
+            {/* Existing Review Display */}
+            {existingReview && (
+              <>
+                <View style={styles.handoffDivider} />
+                <View style={styles.existingReviewCard}>
+                  <Text style={styles.existingReviewLabel}>Your Rating</Text>
+                  <View style={styles.existingReviewStars}>
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <FontAwesome
+                        key={star}
+                        name={star <= existingReview.rating ? 'star' : 'star-o'}
+                        size={18}
+                        color="#F59E0B"
+                      />
+                    ))}
+                    <Text style={styles.existingReviewRating}>{existingReview.rating}/5</Text>
+                  </View>
+                  {existingReview.comment && (
+                    <Text style={styles.existingReviewComment}>"{existingReview.comment}"</Text>
+                  )}
+                </View>
+              </>
+            )}
           </View>
         )}
 
@@ -657,29 +814,38 @@ export default function RequestDetailScreen() {
 
                 {/* Actions for pending proposals */}
                 {proposal.status === 'pending' && request.status === 'open' && (
-                  <View style={styles.proposalActions}>
+                  <View>
                     <TouchableOpacity
-                      style={[styles.acceptButton, accepting && { opacity: 0.6 }]}
-                      onPress={() => handleAcceptProposal(proposal)}
-                      disabled={accepting}
+                      style={styles.chatProviderButton}
+                      onPress={() => handleChatWithProvider(proposal)}
                     >
-                      {accepting ? (
-                        <ActivityIndicator size="small" color="#FFFFFF" />
-                      ) : (
-                        <>
-                          <FontAwesome name="check" size={16} color="#FFFFFF" />
-                          <Text style={styles.acceptButtonText}>Accept</Text>
-                        </>
-                      )}
+                      <FontAwesome name="comment" size={16} color={PRIMARY} />
+                      <Text style={styles.chatProviderButtonText}>Chat with Provider</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.rejectButton}
-                      onPress={() => handleRejectProposal(proposal)}
-                      disabled={accepting}
-                    >
-                      <FontAwesome name="times" size={16} color="#EF4444" />
-                      <Text style={styles.rejectButtonText}>Reject</Text>
-                    </TouchableOpacity>
+                    <View style={styles.proposalActions}>
+                      <TouchableOpacity
+                        style={[styles.acceptButton, accepting && { opacity: 0.6 }]}
+                        onPress={() => handleAcceptProposal(proposal)}
+                        disabled={accepting}
+                      >
+                        {accepting ? (
+                          <ActivityIndicator size="small" color="#FFFFFF" />
+                        ) : (
+                          <>
+                            <FontAwesome name="check" size={16} color="#FFFFFF" />
+                            <Text style={styles.acceptButtonText}>Accept</Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.rejectButton}
+                        onPress={() => handleRejectProposal(proposal)}
+                        disabled={accepting}
+                      >
+                        <FontAwesome name="times" size={16} color="#EF4444" />
+                        <Text style={styles.rejectButtonText}>Reject</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 )}
 
@@ -773,6 +939,94 @@ export default function RequestDetailScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Rating Modal */}
+      <Modal
+        visible={showRatingModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowRatingModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.ratingModalContent}>
+            <View style={styles.ratingModalHeader}>
+              <Text style={styles.ratingModalTitle}>Rate Provider</Text>
+              <TouchableOpacity onPress={() => setShowRatingModal(false)}>
+                <FontAwesome name="times" size={20} color={MEDIUM} />
+              </TouchableOpacity>
+            </View>
+
+            {acceptedProposal && (
+              <Text style={styles.ratingModalSubtitle}>
+                How was your experience with {acceptedProposal.provider?.full_name || 'this provider'}?
+              </Text>
+            )}
+
+            {/* Star Selection */}
+            <View style={styles.starSelectionRow}>
+              {[1, 2, 3, 4, 5].map((star) => (
+                <TouchableOpacity
+                  key={star}
+                  onPress={() => setRatingStars(star)}
+                  style={styles.starButton}
+                >
+                  <FontAwesome
+                    name={star <= ratingStars ? 'star' : 'star-o'}
+                    size={36}
+                    color={star <= ratingStars ? '#F59E0B' : MEDIUM}
+                  />
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={styles.starLabel}>
+              {ratingStars === 0
+                ? 'Tap to rate'
+                : ratingStars === 1
+                ? 'Poor'
+                : ratingStars === 2
+                ? 'Fair'
+                : ratingStars === 3
+                ? 'Good'
+                : ratingStars === 4
+                ? 'Very Good'
+                : 'Excellent'}
+            </Text>
+
+            {/* Comment Input */}
+            <TextInput
+              style={styles.ratingCommentInput}
+              placeholder="Share your experience (optional)"
+              placeholderTextColor={MUTED}
+              value={ratingComment}
+              onChangeText={setRatingComment}
+              multiline
+              numberOfLines={4}
+              textAlignVertical="top"
+              maxLength={500}
+            />
+            <Text style={styles.ratingCharCount}>{ratingComment.length}/500</Text>
+
+            {/* Submit */}
+            <TouchableOpacity
+              style={[
+                styles.submitRatingButton,
+                (!ratingStars || submittingRating) && { opacity: 0.5 },
+              ]}
+              onPress={handleSubmitRating}
+              disabled={!ratingStars || submittingRating}
+            >
+              {submittingRating ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <>
+                  <FontAwesome name="star" size={16} color="#FFFFFF" />
+                  <Text style={styles.submitRatingButtonText}>Submit Rating</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1141,6 +1395,23 @@ const styles = StyleSheet.create({
     color: DARK,
     lineHeight: 20,
   },
+  chatProviderButton: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: PRIMARY,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  chatProviderButtonText: {
+    color: PRIMARY,
+    fontSize: 14,
+    fontWeight: '600',
+  },
   proposalActions: {
     flexDirection: 'row',
     gap: 8,
@@ -1309,5 +1580,142 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
+  },
+
+  // Rating Styles
+  rateProviderButton: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1.5,
+    borderColor: '#F59E0B',
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  rateProviderButtonText: {
+    color: '#92400E',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  existingReviewCard: {
+    backgroundColor: '#FFFBEB',
+    borderRadius: 8,
+    padding: 12,
+  },
+  existingReviewLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#92400E',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 6,
+  },
+  existingReviewStars: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 6,
+  },
+  existingReviewRating: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#92400E',
+    marginLeft: 6,
+  },
+  existingReviewComment: {
+    fontSize: 13,
+    color: '#78350F',
+    fontStyle: 'italic',
+    lineHeight: 20,
+  },
+
+  // Rating Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  ratingModalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+    ...Platform.select({
+      web: { boxShadow: '0 8px 24px rgba(0, 0, 0, 0.15)' },
+      default: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 24, elevation: 8 },
+    }),
+  },
+  ratingModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  ratingModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: DARK,
+  },
+  ratingModalSubtitle: {
+    fontSize: 14,
+    color: MEDIUM,
+    marginBottom: 20,
+  },
+  starSelectionRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 12,
+    marginBottom: 8,
+  },
+  starButton: {
+    padding: 6,
+  },
+  starLabel: {
+    textAlign: 'center',
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#F59E0B',
+    marginBottom: 20,
+  },
+  ratingCommentInput: {
+    backgroundColor: BG,
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: DARK,
+    minHeight: 100,
+  },
+  ratingCharCount: {
+    textAlign: 'right',
+    fontSize: 11,
+    color: MUTED,
+    marginTop: 4,
+    marginBottom: 16,
+  },
+  submitRatingButton: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#F59E0B',
+    paddingVertical: 14,
+    borderRadius: 8,
+    ...Platform.select({
+      web: { boxShadow: '0 3px 6px rgba(245, 158, 11, 0.3)' },
+      default: { shadowColor: '#F59E0B', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 3 },
+    }),
+  },
+  submitRatingButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });

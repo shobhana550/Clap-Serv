@@ -162,12 +162,10 @@ export default function TabLayout() {
         }}
       />
 
-      {/* Projects Tab - Hidden (role ends at acceptance) */}
+      {/* Projects Tab - removed from app, hidden */}
       <Tabs.Screen
         name="projects"
-        options={{
-          href: null, // Hide from tab bar
-        }}
+        options={{ href: null }}
       />
 
       {/* Messages Tab */}
