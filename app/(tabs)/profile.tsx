@@ -218,9 +218,7 @@ export default function ProfileScreen() {
         {/* Help & Support */}
         <TouchableOpacity
           style={styles.actionCard}
-          onPress={() =>
-            showAlert('Help & Support', 'Help screen coming soon!')
-          }
+          onPress={() => router.push('/legal/help' as any)}
         >
           <View style={styles.actionRow}>
             <View style={styles.actionLeft}>
@@ -235,6 +233,42 @@ export default function ProfileScreen() {
             <FontAwesome name="chevron-right" size={18} color="#C5C4CC" />
           </View>
         </TouchableOpacity>
+        {/* About */}
+        <TouchableOpacity
+          style={styles.actionCard}
+          onPress={() => router.push('/legal/about' as any)}
+        >
+          <View style={styles.actionRow}>
+            <View style={styles.actionLeft}>
+              <View style={[styles.iconCircle, { backgroundColor: '#DBEAFE' }]}>
+                <FontAwesome name="info-circle" size={16} color="#3B82F6" />
+              </View>
+              <View style={styles.actionTextContainer}>
+                <Text style={styles.actionTitle}>About Clap-Serv</Text>
+                <Text style={styles.actionSubtitle}>Learn about our mission and vision</Text>
+              </View>
+            </View>
+            <FontAwesome name="chevron-right" size={18} color="#C5C4CC" />
+          </View>
+        </TouchableOpacity>
+
+        {/* Legal */}
+        <View style={styles.legalRow}>
+          <TouchableOpacity
+            style={styles.legalButton}
+            onPress={() => router.push('/legal/privacy' as any)}
+          >
+            <FontAwesome name="shield" size={13} color="#B3B8C4" />
+            <Text style={styles.legalButtonText}>Privacy Policy</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.legalButton}
+            onPress={() => router.push('/legal/terms' as any)}
+          >
+            <FontAwesome name="file-text-o" size={13} color="#B3B8C4" />
+            <Text style={styles.legalButtonText}>Terms of Service</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Sign Out Button */}
@@ -447,6 +481,29 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: '#E20010',
+  },
+  legalRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 4,
+    marginBottom: 6,
+  },
+  legalButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#E6E9EF',
+  },
+  legalButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#B3B8C4',
   },
   version: {
     textAlign: 'center',
