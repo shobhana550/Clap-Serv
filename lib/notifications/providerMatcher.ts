@@ -175,23 +175,21 @@ const getProviderTokens = async (
 ): Promise<MatchedProvider[]> => {
   if (providers.length === 0) return [];
 
-  const userIds = providers.map((p) => p.userId);
-
-  const { data: tokens, error } = await supabase
-    .from('push_tokens')
-    .select('user_id, token')
-    .in('user_id', userIds);
-
-  if (error) {
-    console.error('Error fetching push tokens:', error);
-  }
-
+  // Fetch tokens per user using secure RPC function
   const tokenMap = new Map<string, string[]>();
-  (tokens || []).forEach((t: any) => {
-    const existing = tokenMap.get(t.user_id) || [];
-    existing.push(t.token);
-    tokenMap.set(t.user_id, existing);
-  });
+  await Promise.all(
+    providers.map(async (p) => {
+      try {
+        const { data: tokens } = await supabase
+          .rpc('get_user_push_tokens', { target_user_id: p.userId });
+        if (tokens && tokens.length > 0) {
+          tokenMap.set(p.userId, tokens.map((t: any) => t.token));
+        }
+      } catch (err) {
+        console.error(`Error fetching push tokens for ${p.userId}:`, err);
+      }
+    })
+  );
 
   return providers.map((p) => ({
     ...p,

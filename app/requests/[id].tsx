@@ -165,48 +165,17 @@ export default function RequestDetailScreen() {
             try {
               setAccepting(true);
 
-              // a. Update accepted proposal status
-              const { error: acceptError } = await supabase
-                .from('proposals')
-                .update({ status: 'accepted' })
-                .eq('id', proposal.id);
+              // Use atomic RPC function to prevent race conditions
+              const { data: rpcResult, error: rpcError } = await supabase
+                .rpc('accept_proposal', {
+                  p_proposal_id: proposal.id,
+                  p_request_id: id,
+                });
 
-              if (acceptError) throw acceptError;
+              if (rpcError) throw rpcError;
 
-              // b. Reject all other pending proposals for this request
-              const { error: rejectError } = await supabase
-                .from('proposals')
-                .update({ status: 'rejected' })
-                .eq('request_id', id)
-                .eq('status', 'pending')
-                .neq('id', proposal.id);
-
-              if (rejectError) console.error('Error rejecting other proposals:', rejectError);
-
-              // c. Update request status to in_progress
-              const { error: requestUpdateError } = await supabase
-                .from('service_requests')
-                .update({ status: 'in_progress' })
-                .eq('id', id);
-
-              if (requestUpdateError) throw requestUpdateError;
-
-              // d. Create conversation between buyer and provider
-              const { data: convoData, error: convoError } = await supabase
-                .from('conversations')
-                .insert({
-                  request_id: id,
-                  buyer_id: user!.id,
-                  provider_id: proposal.provider_id,
-                  request_title: request.title,
-                })
-                .select('id')
-                .single();
-
-              if (convoError) {
-                console.error('Error creating conversation:', convoError);
-              } else if (convoData) {
-                setConversationId(convoData.id);
+              if (rpcResult?.conversation_id) {
+                setConversationId(rpcResult.conversation_id);
               }
 
               // e. Send in-app notification to provider

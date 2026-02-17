@@ -380,12 +380,10 @@ export default function ChatScreen() {
   const sendChatPushNotification = async (recipientId: string, messageContent: string) => {
     try {
       const { data: tokens } = await supabase
-        .from('push_tokens')
-        .select('token')
-        .eq('user_id', recipientId);
+        .rpc('get_user_push_tokens', { target_user_id: recipientId });
 
       if (tokens && tokens.length > 0) {
-        const tokenStrings = tokens.map((t) => t.token);
+        const tokenStrings = tokens.map((t: any) => t.token);
         const senderName = user?.user_metadata?.full_name || 'Someone';
 
         await sendPushNotifications(

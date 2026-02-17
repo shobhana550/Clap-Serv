@@ -1,12 +1,33 @@
 /**
  * Admin API functions for Clap-Serv
+ * All admin functions verify admin status server-side before executing.
  */
 
 import { supabase } from '@/lib/supabase';
 
+/**
+ * Verify current user is an admin before allowing any admin operation.
+ * This is a server-side check that cannot be bypassed by client manipulation.
+ */
+async function requireAdmin(): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('is_admin')
+    .eq('id', user.id)
+    .single();
+
+  if (error || !data?.is_admin) {
+    throw new Error('Access denied: admin privileges required');
+  }
+}
+
 // ===== User Management =====
 
 export const getUsers = async (search?: string) => {
+  await requireAdmin();
   let query = supabase
     .from('profiles')
     .select('*, provider_profiles(*)')
@@ -21,6 +42,7 @@ export const getUsers = async (search?: string) => {
 };
 
 export const toggleBlockUser = async (userId: string, blocked: boolean) => {
+  await requireAdmin();
   const { error } = await supabase
     .from('profiles')
     .update({ is_blocked: blocked })
@@ -29,6 +51,7 @@ export const toggleBlockUser = async (userId: string, blocked: boolean) => {
 };
 
 export const toggleVerifyProvider = async (userId: string, verified: boolean) => {
+  await requireAdmin();
   const { error } = await supabase
     .from('provider_profiles')
     .update({ is_verified: verified })
@@ -87,6 +110,7 @@ export const createRegion = async (region: {
   lng?: number;
   radius_km?: number;
 }) => {
+  await requireAdmin();
   const { data, error } = await supabase
     .from('service_regions')
     .insert(region)
@@ -96,6 +120,7 @@ export const createRegion = async (region: {
 };
 
 export const updateRegion = async (id: string, updates: any) => {
+  await requireAdmin();
   const { error } = await supabase
     .from('service_regions')
     .update(updates)
@@ -104,6 +129,7 @@ export const updateRegion = async (id: string, updates: any) => {
 };
 
 export const deleteRegion = async (id: string) => {
+  await requireAdmin();
   const { error } = await supabase
     .from('service_regions')
     .delete()
@@ -122,6 +148,7 @@ export const getRegionCategories = async (regionId: string) => {
 };
 
 export const setRegionCategories = async (regionId: string, categoryIds: string[]) => {
+  await requireAdmin();
   // Delete existing
   await supabase
     .from('region_categories')
@@ -146,6 +173,7 @@ export const setRegionCategories = async (regionId: string, categoryIds: string[
 // ===== Stats =====
 
 export const getAdminStats = async () => {
+  await requireAdmin();
   const [users, providers, requests] = await Promise.all([
     supabase.from('profiles').select('id', { count: 'exact', head: true }),
     supabase.from('provider_profiles').select('user_id', { count: 'exact', head: true }),
@@ -162,6 +190,7 @@ export const getAdminStats = async () => {
 // ===== Requests Management =====
 
 export const getRequests = async (search?: string) => {
+  await requireAdmin();
   let query = supabase
     .from('service_requests')
     .select('*, buyer:profiles!buyer_id(full_name, email), category:service_categories!category_id(name, icon)')
@@ -183,6 +212,7 @@ export const createCategory = async (category: {
   icon: string;
   max_distance_km: number | null;
 }) => {
+  await requireAdmin();
   const { data, error } = await supabase
     .from('service_categories')
     .insert(category)
@@ -200,6 +230,7 @@ export const getCategories = async () => {
 };
 
 export const updateCategory = async (id: string, updates: any) => {
+  await requireAdmin();
   const { error } = await supabase
     .from('service_categories')
     .update(updates)

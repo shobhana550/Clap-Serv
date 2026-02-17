@@ -76,12 +76,9 @@ export default function PublicProviderProfile() {
   const fetchProfile = async () => {
     setLoading(true);
     try {
-      // Fetch user profile
+      // Fetch user profile using secure RPC (hides email/phone from non-partners)
       const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', id)
-        .single();
+        .rpc('get_public_profile', { profile_id: id });
 
       if (profileError || !profileData) {
         setProfile(null);
