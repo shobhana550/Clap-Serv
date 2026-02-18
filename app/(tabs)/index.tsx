@@ -8,6 +8,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
 import { useUserStore } from '@/store/userStore';
 import { useRoleStore } from '@/store/roleStore';
+import { useOnboardingStore } from '@/store/onboardingStore';
 import { supabase } from '@/lib/supabase';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 
@@ -51,9 +52,20 @@ export default function DashboardScreen() {
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const { hasSeenOnboarding, initialized: onboardingReady, startOnboarding } = useOnboardingStore();
+
   const canSwitchRole = userRole === 'both';
   const isBuyer = activeRole === 'buyer';
   const isAdmin = Platform.OS === 'web' && (profile as any)?.is_admin === true;
+
+  // Trigger onboarding for first-time users
+  useEffect(() => {
+    if (onboardingReady && !hasSeenOnboarding && profile) {
+      // Small delay to let the home screen render first
+      const timer = setTimeout(() => startOnboarding(), 800);
+      return () => clearTimeout(timer);
+    }
+  }, [onboardingReady, hasSeenOnboarding, profile]);
 
   const fetchStats = useCallback(async () => {
     if (!user?.id) return;

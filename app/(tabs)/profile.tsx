@@ -19,12 +19,20 @@ import { useRoleStore } from '@/store/roleStore';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { showAlert } from '@/utils/alert';
 import { useCategoryLookup } from '@/lib/useCategoryLookup';
+import { useOnboardingStore } from '@/store/onboardingStore';
 
 export default function ProfileScreen() {
   const { signOut } = useAuthStore();
   const { profile, providerProfile, clearProfile } = useUserStore();
   const { userRole } = useRoleStore();
   const { getCategoryById } = useCategoryLookup();
+  const { resetOnboarding, startOnboarding } = useOnboardingStore();
+
+  const handleReplayTour = async () => {
+    await resetOnboarding();
+    startOnboarding();
+    router.replace('/(tabs)');
+  };
 
   const handleSignOut = async () => {
     showAlert(
@@ -193,6 +201,27 @@ export default function ProfileScreen() {
             </View>
           </TouchableOpacity>
         )}
+
+        {/* Replay App Tour */}
+        <TouchableOpacity
+          style={styles.actionCard}
+          onPress={handleReplayTour}
+        >
+          <View style={styles.actionRow}>
+            <View style={styles.actionLeft}>
+              <View style={[styles.iconCircle, { backgroundColor: '#FEF3C7' }]}>
+                <FontAwesome name="play-circle" size={16} color="#F59E0B" />
+              </View>
+              <View style={styles.actionTextContainer}>
+                <Text style={styles.actionTitle}>Replay App Tour</Text>
+                <Text style={styles.actionSubtitle}>
+                  View the guided walkthrough again
+                </Text>
+              </View>
+            </View>
+            <FontAwesome name="chevron-right" size={18} color="#C5C4CC" />
+          </View>
+        </TouchableOpacity>
 
         {/* Settings */}
         <TouchableOpacity

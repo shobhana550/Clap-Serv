@@ -9,6 +9,8 @@ import { Platform, TouchableOpacity, View, Text, StyleSheet } from 'react-native
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/store/authStore';
 import { useNotificationStore } from '@/store/notificationStore';
+import { useOnboardingStore } from '@/store/onboardingStore';
+import OnboardingOverlay from '@/components/OnboardingOverlay';
 
 // Tab Bar Icon Component
 function TabBarIcon(props: {
@@ -73,7 +75,13 @@ export default function TabLayout() {
   // On older Android with software nav buttons, insets.bottom > 0
   const bottomInset = Platform.OS === 'android' ? insets.bottom : 0;
 
-  // Fetch notifications on mount and periodically
+  const { initialize: initOnboarding } = useOnboardingStore();
+
+  // Initialize onboarding store and fetch notifications
+  useEffect(() => {
+    initOnboarding();
+  }, []);
+
   useEffect(() => {
     if (user?.id) {
       fetchNotifications(user.id);
@@ -84,6 +92,8 @@ export default function TabLayout() {
   }, [user?.id]);
 
   return (
+    <>
+    <OnboardingOverlay />
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: '#E20010',
@@ -188,5 +198,6 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
+    </>
   );
 }
