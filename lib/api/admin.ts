@@ -237,3 +237,67 @@ export const updateCategory = async (id: string, updates: any) => {
     .eq('id', id);
   return { error };
 };
+
+// ===== Hyperlocal Ads Management =====
+
+export const getAds = async () => {
+  await requireAdmin();
+  const { data, error } = await supabase
+    .from('hyperlocal_ads')
+    .select('*')
+    .order('created_at', { ascending: false });
+  return { data, error };
+};
+
+export const createAd = async (ad: {
+  title: string;
+  subtitle?: string;
+  cta_text: string;
+  cta_url?: string;
+  bg_color: string;
+  text_color: string;
+  target_city?: string;
+}) => {
+  await requireAdmin();
+  const { data, error } = await supabase
+    .from('hyperlocal_ads')
+    .insert({ ...ad, is_active: false })
+    .select()
+    .single();
+  return { data, error };
+};
+
+export const updateAd = async (id: string, updates: Partial<{
+  title: string;
+  subtitle: string;
+  cta_text: string;
+  cta_url: string;
+  bg_color: string;
+  text_color: string;
+  target_city: string;
+}>) => {
+  await requireAdmin();
+  const { error } = await supabase
+    .from('hyperlocal_ads')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('id', id);
+  return { error };
+};
+
+export const toggleAdActive = async (id: string, isActive: boolean) => {
+  await requireAdmin();
+  const { error } = await supabase
+    .from('hyperlocal_ads')
+    .update({ is_active: isActive, updated_at: new Date().toISOString() })
+    .eq('id', id);
+  return { error };
+};
+
+export const deleteAd = async (id: string) => {
+  await requireAdmin();
+  const { error } = await supabase
+    .from('hyperlocal_ads')
+    .delete()
+    .eq('id', id);
+  return { error };
+};

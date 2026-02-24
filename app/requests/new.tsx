@@ -24,6 +24,7 @@ import * as z from 'zod';
 import { showAlert } from '@/utils/alert';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
+import { useUserStore } from '@/store/userStore';
 import { getCurrentLocation, formatLocationString } from '@/lib/utils/location';
 import { Location } from '@/types';
 import { notifyMatchingProviders } from '@/lib/notifications';
@@ -58,6 +59,7 @@ type RequestFormData = z.infer<typeof requestSchema>;
 
 export default function NewRequestScreen() {
   const { user } = useAuthStore();
+  const { profile } = useUserStore();
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -66,9 +68,20 @@ export default function NewRequestScreen() {
   const [attachments, setAttachments] = useState<any[]>([]);
   const [userLocation, setUserLocation] = useState<Location | null>(null);
   const [locationLoading, setLocationLoading] = useState(false);
+  const [isEditingLocation, setIsEditingLocation] = useState(false);
+  const [manualCityInput, setManualCityInput] = useState('');
   const [dbCategories, setDbCategories] = useState<DbCategory[]>([]);
 
-  // Fetch categories from Supabase
+  // Extract saved location from profile (if available)
+  const savedProfileLocation: Location | null = (() => {
+    if (!profile?.location) return null;
+    const loc = profile.location as any;
+    if (loc.lat && loc.lng) return loc as Location;
+    if (loc.city || loc.address) return loc as Location;
+    return null;
+  })();
+
+  // Fetch categories from Supabase — "Other" always pinned first
   useEffect(() => {
     const fetchCategories = async () => {
       const { data, error } = await supabase
@@ -76,7 +89,9 @@ export default function NewRequestScreen() {
         .select('id, name, description, icon, max_distance_km')
         .order('name');
       if (!error && data) {
-        setDbCategories(data);
+        const other = data.filter((c) => c.name === 'Other');
+        const rest = data.filter((c) => c.name !== 'Other');
+        setDbCategories([...other, ...rest]);
       }
     };
     fetchCategories();
@@ -103,18 +118,61 @@ export default function NewRequestScreen() {
   const selectedCategoryId = watch('category_id');
   const selectedCategory = dbCategories.find(cat => cat.id === selectedCategoryId);
 
-  // Auto-capture location when a physical service category is selected
+  // Auto-capture location on mount: use saved profile location first, then try GPS
   useEffect(() => {
-    if (selectedCategory && selectedCategory.max_distance_km !== null && !userLocation) {
-      fetchUserLocation();
+    if (!userLocation) {
+      if (savedProfileLocation) {
+        setUserLocation(savedProfileLocation);
+      } else {
+        fetchUserLocation();
+      }
     }
-  }, [selectedCategoryId, selectedCategory]);
+  }, []);
 
   const fetchUserLocation = async () => {
     setLocationLoading(true);
     const loc = await getCurrentLocation();
-    setUserLocation(loc);
+    if (loc) {
+      setUserLocation(loc);
+      // Also save to profile for future use
+      if (user?.id) {
+        supabase
+          .from('profiles')
+          .update({ location: loc as any, updated_at: new Date().toISOString() })
+          .eq('id', user.id)
+          .then(() => {});
+      }
+    }
     setLocationLoading(false);
+  };
+
+  const useSavedLocation = () => {
+    if (savedProfileLocation) {
+      setUserLocation(savedProfileLocation);
+    }
+  };
+
+  const saveManualLocation = () => {
+    const city = manualCityInput.trim();
+    if (!city) return;
+    const parts = city.split(',').map((s) => s.trim());
+    const newLoc: Location = {
+      city: parts[0],
+      state: parts[1] || undefined,
+      lat: userLocation?.lat,
+      lng: userLocation?.lng,
+    };
+    setUserLocation(newLoc);
+    setIsEditingLocation(false);
+    setManualCityInput('');
+    // Persist to profile so it's used as default next time
+    if (user?.id) {
+      supabase
+        .from('profiles')
+        .update({ location: newLoc as any, updated_at: new Date().toISOString() })
+        .eq('id', user.id)
+        .then(() => {});
+    }
   };
 
   const onSubmit = async (data: RequestFormData) => {
@@ -129,12 +187,11 @@ export default function NewRequestScreen() {
       return;
     }
 
-    // Check location for physical services
-    const cat = dbCategories.find((c) => c.id === data.category_id);
-    if (cat && cat.max_distance_km !== null && !userLocation) {
+    // Check location — required for all requests so local providers can find them
+    if (!userLocation) {
       showAlert(
         'Location Required',
-        'Physical service requests need your location so nearby providers can find you. Please enable location access.'
+        'Your location is needed so nearby providers can find your request. Please tap "Set your location" and enable location access.'
       );
       fetchUserLocation();
       return;
@@ -395,6 +452,9 @@ export default function NewRequestScreen() {
                     >
                       {category.name}
                     </Text>
+                    {category.name === 'Other' && (
+                      <Text style={styles.otherBadge}>City-wide</Text>
+                    )}
                     {selectedCategoryId === category.id && (
                       <FontAwesome name="check" size={16} color="#E20010" />
                     )}
@@ -533,45 +593,63 @@ export default function NewRequestScreen() {
             render={({ field: { onChange, value } }) => (
               <>
                 {Platform.OS === 'web' ? (
-                  <>
-                    <TextInput
-                      style={styles.input}
-                      type="datetime-local"
-                      min={new Date().toISOString().slice(0, 16)}
-                      onChange={(e: any) => {
-                        const datetimeValue = e.target.value;
-                        if (datetimeValue) {
-                          // Convert datetime-local value to readable format
-                          const date = new Date(datetimeValue);
-                          const formattedDateTime = date.toLocaleString('en-IN', {
-                            year: 'numeric',
-                            month: 'short',
-                            day: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            hour12: true,
-                          });
-                          onChange(formattedDateTime);
-                        }
-                      }}
-                      placeholderTextColor="#C5C4CC"
-                    />
+                  <View>
+                    <View style={styles.dateButton}>
+                      <FontAwesome name="calendar" size={18} color="#E20010" />
+                      <input
+                        type="datetime-local"
+                        min={new Date().toISOString().slice(0, 16)}
+                        value={selectedDateTime.toISOString().slice(0, 16)}
+                        onChange={(e: any) => {
+                          const datetimeValue = e.target.value;
+                          if (datetimeValue) {
+                            const date = new Date(datetimeValue);
+                            setSelectedDateTime(date);
+                            const formattedDateTime = date.toLocaleString('en-IN', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              hour12: true,
+                            });
+                            onChange(formattedDateTime);
+                          }
+                        }}
+                        style={{
+                          flex: 1,
+                          border: 'none',
+                          outline: 'none',
+                          fontSize: 15,
+                          color: '#5F6267',
+                          backgroundColor: 'transparent',
+                          fontFamily: 'inherit',
+                          cursor: 'pointer',
+                        }}
+                      />
+                    </View>
                     {value && (
                       <View style={styles.selectedDateTimeDisplay}>
                         <FontAwesome name="clock-o" size={16} color="#E20010" />
                         <Text style={styles.selectedDateTimeText}>{value}</Text>
                       </View>
                     )}
-                  </>
+                  </View>
                 ) : (
                   <>
                     <TouchableOpacity
-                      style={styles.dateButton}
+                      style={[
+                        styles.dateButton,
+                        !value && styles.dateButtonEmpty,
+                      ]}
                       onPress={() => setShowDatePicker(true)}
                     >
-                      <FontAwesome name="calendar" size={18} color="#E20010" />
-                      <Text style={styles.dateButtonText}>
-                        {value || 'Select date and time'}
+                      <FontAwesome name="calendar" size={18} color={value ? '#E20010' : '#B3B8C4'} />
+                      <Text style={[
+                        styles.dateButtonText,
+                        !value && { color: '#C5C4CC' },
+                      ]}>
+                        {value || 'Tap to select date & time'}
                       </Text>
                     </TouchableOpacity>
 
@@ -622,38 +700,104 @@ export default function NewRequestScreen() {
           </Text>
         </View>
 
-        {/* Location (auto-captured for physical services) */}
-        {selectedCategory && selectedCategory.max_distance_km !== null && (
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>
-              Your Location <Text style={styles.required}>*</Text>
-            </Text>
-            {locationLoading ? (
-              <View style={styles.dateButton}>
-                <FontAwesome name="spinner" size={18} color="#E20010" />
-                <Text style={styles.dateButtonText}>Getting your location...</Text>
-              </View>
-            ) : userLocation ? (
-              <View style={styles.dateButton}>
-                <FontAwesome name="map-marker" size={18} color="#10B981" />
-                <Text style={[styles.dateButtonText, { color: '#10B981' }]}>
-                  {formatLocationString(userLocation)}
-                </Text>
-                <TouchableOpacity onPress={fetchUserLocation}>
-                  <FontAwesome name="refresh" size={14} color="#B3B8C4" />
+        {/* Location — always shown, required for all requests */}
+        <View style={styles.formGroup}>
+          <Text style={styles.label}>
+            Your Location <Text style={styles.required}>*</Text>
+          </Text>
+          {locationLoading ? (
+            <View style={styles.dateButton}>
+              <FontAwesome name="spinner" size={18} color="#E20010" />
+              <Text style={styles.dateButtonText}>Getting your location...</Text>
+            </View>
+          ) : isEditingLocation ? (
+            <View style={styles.locationEditContainer}>
+              <TextInput
+                style={styles.locationEditInput}
+                placeholder="e.g. Jaideopatti, Bihar"
+                value={manualCityInput}
+                onChangeText={setManualCityInput}
+                autoFocus
+                placeholderTextColor="#C5C4CC"
+                onSubmitEditing={saveManualLocation}
+                returnKeyType="done"
+              />
+              <View style={styles.locationEditActions}>
+                <TouchableOpacity style={styles.locationSaveBtn} onPress={saveManualLocation}>
+                  <FontAwesome name="check" size={14} color="#FFFFFF" />
+                  <Text style={styles.locationSaveBtnText}>Save</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.locationCancelBtn}
+                  onPress={() => { setIsEditingLocation(false); setManualCityInput(''); }}
+                >
+                  <Text style={styles.locationCancelBtnText}>Cancel</Text>
                 </TouchableOpacity>
               </View>
-            ) : (
-              <TouchableOpacity style={styles.dateButton} onPress={fetchUserLocation}>
-                <FontAwesome name="map-marker" size={18} color="#E20010" />
-                <Text style={styles.dateButtonText}>Tap to capture your location</Text>
+              <Text style={styles.helperText}>Type "City" or "City, State" (e.g. Jaideopatti, Bihar)</Text>
+            </View>
+          ) : userLocation ? (
+            <View style={styles.locationSuccess}>
+              <FontAwesome name="map-marker" size={18} color="#10B981" />
+              <Text style={styles.locationSuccessText}>
+                {formatLocationString(userLocation)}
+              </Text>
+              <TouchableOpacity
+                onPress={() => { setManualCityInput(formatLocationString(userLocation!)); setIsEditingLocation(true); }}
+                style={styles.locationRefresh}
+              >
+                <FontAwesome name="pencil" size={14} color="#B3B8C4" />
               </TouchableOpacity>
-            )}
-            <Text style={styles.helperText}>
-              Location is required for {selectedCategory.name} (within {selectedCategory.max_distance_km}km range)
-            </Text>
-          </View>
-        )}
+              <TouchableOpacity onPress={fetchUserLocation} style={styles.locationRefresh}>
+                <FontAwesome name="refresh" size={14} color="#B3B8C4" />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View>
+              {/* Detect current location */}
+              <TouchableOpacity style={styles.locationPrompt} onPress={fetchUserLocation}>
+                <View style={styles.locationPromptIcon}>
+                  <FontAwesome name="crosshairs" size={20} color="#E20010" />
+                </View>
+                <View style={styles.locationPromptContent}>
+                  <Text style={styles.locationPromptTitle}>Detect my location</Text>
+                  <Text style={styles.locationPromptDesc}>
+                    Use GPS to find your current location
+                  </Text>
+                </View>
+                <FontAwesome name="chevron-right" size={14} color="#B3B8C4" />
+              </TouchableOpacity>
+
+              {/* Use saved profile location */}
+              {savedProfileLocation && (
+                <TouchableOpacity
+                  style={styles.savedLocationButton}
+                  onPress={useSavedLocation}
+                >
+                  <FontAwesome name="bookmark" size={16} color="#3B82F6" />
+                  <Text style={styles.savedLocationText}>
+                    Use saved: {formatLocationString(savedProfileLocation)}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+          {/* When location is set, show option to switch to saved location */}
+          {userLocation && savedProfileLocation && formatLocationString(userLocation) !== formatLocationString(savedProfileLocation) && (
+            <TouchableOpacity
+              style={styles.savedLocationButton}
+              onPress={useSavedLocation}
+            >
+              <FontAwesome name="bookmark" size={14} color="#3B82F6" />
+              <Text style={styles.savedLocationText}>
+                Use saved: {formatLocationString(savedProfileLocation)}
+              </Text>
+            </TouchableOpacity>
+          )}
+          <Text style={styles.helperText}>
+            Location helps local providers discover your request
+          </Text>
+        </View>
 
         {/* Attachments */}
         <View style={styles.formGroup}>
@@ -882,6 +1026,16 @@ const styles = StyleSheet.create({
     color: '#E20010',
     fontWeight: '600',
   },
+  otherBadge: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#7C3AED',
+    backgroundColor: '#EDE9FE',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
   budgetRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -953,6 +1107,81 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#E20010',
+  },
+  dateButtonEmpty: {
+    borderColor: '#E6E9EF',
+    borderStyle: 'dashed',
+  },
+  locationSuccess: {
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  locationSuccessText: {
+    flex: 1,
+    fontSize: 15,
+    color: '#10B981',
+    fontWeight: '500',
+  },
+  locationRefresh: {
+    padding: 4,
+  },
+  locationPrompt: {
+    backgroundColor: '#FFF0F1',
+    borderWidth: 1,
+    borderColor: '#FFC7CB',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  locationPromptIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  locationPromptContent: {
+    flex: 1,
+  },
+  locationPromptTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#E20010',
+    marginBottom: 2,
+  },
+  locationPromptDesc: {
+    fontSize: 12,
+    color: '#5F6267',
+    lineHeight: 16,
+  },
+  savedLocationButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  savedLocationText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#3B82F6',
+    fontWeight: '500',
   },
   submitButton: {
     backgroundColor: '#E20010',
@@ -1047,5 +1276,53 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: '#5F6267',
+  },
+  locationEditContainer: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E6E9EF',
+    borderRadius: 8,
+    padding: 12,
+    gap: 8,
+  },
+  locationEditInput: {
+    borderWidth: 1,
+    borderColor: '#E6E9EF',
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: '#5F6267',
+    backgroundColor: '#F7F8FA',
+  },
+  locationEditActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  locationSaveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#10B981',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+  },
+  locationSaveBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  locationCancelBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#E6E9EF',
+  },
+  locationCancelBtnText: {
+    color: '#B3B8C4',
+    fontWeight: '500',
+    fontSize: 14,
   },
 });

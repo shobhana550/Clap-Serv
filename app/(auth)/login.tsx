@@ -30,27 +30,7 @@ type LoginFormData = {
 
 export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<string>('');
   const signIn = useAuthStore((state) => state.signIn);
-
-  // Test Supabase connection
-  const testConnection = async () => {
-    try {
-      const { supabase } = await import('@/lib/supabase');
-      const { data, error } = await supabase.from('profiles').select('count').limit(1);
-
-      if (error) {
-        setConnectionStatus('❌ Error: ' + error.message);
-        console.error('Connection test failed:', error);
-      } else {
-        setConnectionStatus('✅ Connected to Supabase!');
-        console.log('Connection test successful:', data);
-      }
-    } catch (err: any) {
-      setConnectionStatus('❌ Exception: ' + err.message);
-      console.error('Connection exception:', err);
-    }
-  };
 
   const {
     control,
@@ -217,16 +197,6 @@ export default function LoginScreen() {
               )}
             </TouchableOpacity>
           </View>
-
-          {/* Connection Test */}
-          {connectionStatus && (
-            <View style={styles.statusBox}>
-              <Text style={styles.statusText}>{connectionStatus}</Text>
-            </View>
-          )}
-          <TouchableOpacity onPress={testConnection} style={styles.testButton}>
-            <Text style={styles.testButtonText}>🔌 Test Connection</Text>
-          </TouchableOpacity>
 
           {/* Divider */}
           <View style={styles.divider}>
@@ -495,32 +465,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#E20010',
     fontWeight: '700',
-  },
-  statusBox: {
-    backgroundColor: '#F7F8FA',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#E6E9EF',
-  },
-  statusText: {
-    fontSize: 13,
-    color: '#5F6267',
-    textAlign: 'center',
-  },
-  testButton: {
-    backgroundColor: '#F7F8FA',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#E20010',
-  },
-  testButtonText: {
-    fontSize: 14,
-    color: '#E20010',
-    fontWeight: '600',
-    textAlign: 'center',
   },
 });

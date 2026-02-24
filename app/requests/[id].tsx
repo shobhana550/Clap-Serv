@@ -22,7 +22,7 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
 import { useRoleStore } from '@/store/roleStore';
-import { saveNotificationRecord } from '@/lib/notifications/sendNotification';
+import { notifyUser } from '@/lib/notifications/sendNotification';
 import { showAlert } from '@/utils/alert';
 
 // Colors
@@ -179,7 +179,7 @@ export default function RequestDetailScreen() {
               }
 
               // e. Send in-app notification to provider
-              await saveNotificationRecord(
+              await notifyUser(
                 proposal.provider_id,
                 'proposal_accepted',
                 'Proposal Accepted!',
@@ -192,7 +192,7 @@ export default function RequestDetailScreen() {
                 (p) => p.id !== proposal.id && p.status === 'pending'
               );
               for (const rp of rejectedProposals) {
-                await saveNotificationRecord(
+                await notifyUser(
                   rp.provider_id,
                   'proposal_rejected',
                   'Proposal Update',
@@ -240,7 +240,7 @@ export default function RequestDetailScreen() {
               if (error) throw error;
 
               // Send notification to provider
-              await saveNotificationRecord(
+              await notifyUser(
                 proposal.provider_id,
                 'proposal_rejected',
                 'Proposal Rejected',
@@ -358,7 +358,7 @@ export default function RequestDetailScreen() {
       }
 
       // Notify provider
-      await saveNotificationRecord(
+      await notifyUser(
         acceptedProposal.provider_id,
         'review',
         'New Review Received',

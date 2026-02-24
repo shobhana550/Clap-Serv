@@ -124,6 +124,14 @@ export default function AdminLayout() {
           <Text style={styles.navText}>Regions</Text>
         </TouchableOpacity>
 
+        <TouchableOpacity
+          style={styles.navItem}
+          onPress={() => router.push('/(admin)/ads' as any)}
+        >
+          <FontAwesome name="bullhorn" size={16} color="#5F6267" />
+          <Text style={styles.navText}>Hyperlocal Ads</Text>
+        </TouchableOpacity>
+
         <View style={styles.sidebarDivider} />
 
         <TouchableOpacity

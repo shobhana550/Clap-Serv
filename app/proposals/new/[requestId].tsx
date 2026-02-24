@@ -21,7 +21,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
-import { saveNotificationRecord } from '@/lib/notifications/sendNotification';
+import { notifyUser } from '@/lib/notifications/sendNotification';
 import { showAlert } from '@/utils/alert';
 
 // Validation schema
@@ -137,14 +137,15 @@ export default function NewProposalScreen() {
         return;
       }
 
-      // Notify the buyer about the new proposal
+      // Notify the buyer about the new proposal (push + in-app)
       if (request.buyer_id) {
-        await saveNotificationRecord(
+        await notifyUser(
           request.buyer_id,
-          'proposal',
+          'new_proposal',
           'New Proposal Received',
-          `A provider has submitted a proposal for "${request.title}"`,
-          { type: 'proposal', requestId }
+          `A provider submitted a proposal for "${request.title}"`,
+          { type: 'new_proposal', requestId },
+          'default'
         );
       }
 

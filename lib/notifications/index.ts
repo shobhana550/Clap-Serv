@@ -8,7 +8,7 @@
 
 export { registerForPushNotifications, removePushToken } from './pushTokenService';
 export { findMatchingProviders } from './providerMatcher';
-export { sendPushNotifications, notifyProvidersOfNewRequest, saveNotificationRecord } from './sendNotification';
+export { sendPushNotifications, notifyProvidersOfNewRequest, saveNotificationRecord, notifyUser } from './sendNotification';
 
 import { findMatchingProviders } from './providerMatcher';
 import { notifyProvidersOfNewRequest } from './sendNotification';

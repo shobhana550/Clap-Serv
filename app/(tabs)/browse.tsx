@@ -118,6 +118,7 @@ export default function BrowseScreen() {
           proposal_count: req.proposals?.length || 0,
           _distance: distance,
           _maxDistanceKm: req.category?.max_distance_km,
+          _isOther: req.category?.name === 'Other',
         };
       });
 
@@ -142,10 +143,10 @@ export default function BrowseScreen() {
         });
       }
 
-      // Filter by provider's skills
+      // Filter by provider's skills — "Other" requests bypass this and are visible to all providers
       if (providerProfile?.skills && providerProfile.skills.length > 0) {
         transformed = transformed.filter((req: any) =>
-          providerProfile.skills.includes(req.category_id)
+          req._isOther || providerProfile.skills.includes(req.category_id)
         );
       }
 
@@ -325,7 +326,7 @@ export default function BrowseScreen() {
                 All Categories
               </Text>
             </TouchableOpacity>
-            {dbCategories.map((cat) => (
+            {[...dbCategories.filter(c => c.name === 'Other'), ...dbCategories.filter(c => c.name !== 'Other')].map((cat) => (
               <TouchableOpacity
                 key={cat.id}
                 style={[
@@ -350,7 +351,9 @@ export default function BrowseScreen() {
                 >
                   {cat.name}
                 </Text>
-                {cat.max_distance_km !== null && (
+                {cat.name === 'Other' ? (
+                  <Text style={styles.otherBadge}>City-wide</Text>
+                ) : cat.max_distance_km !== null && (
                   <Text style={styles.distanceBadge}>
                     {cat.max_distance_km}km
                   </Text>
@@ -525,6 +528,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
+  },
+  otherBadge: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#7C3AED',
+    backgroundColor: '#EDE9FE',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    overflow: 'hidden',
   },
   scrollView: {
     flex: 1,

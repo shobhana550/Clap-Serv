@@ -3,7 +3,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform, Image, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform, Image, ActivityIndicator, Linking } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
 import { useUserStore } from '@/store/userStore';
@@ -11,6 +11,16 @@ import { useRoleStore } from '@/store/roleStore';
 import { useOnboardingStore } from '@/store/onboardingStore';
 import { supabase } from '@/lib/supabase';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+
+interface HyperlocalAd {
+  id: string;
+  title: string;
+  subtitle: string | null;
+  cta_text: string;
+  cta_url: string | null;
+  bg_color: string;
+  text_color: string;
+}
 
 function getRelativeTime(dateString: string): string {
   const now = new Date();
@@ -51,6 +61,7 @@ export default function DashboardScreen() {
   const [stat2, setStat2] = useState(0);
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeAd, setActiveAd] = useState<HyperlocalAd | null>(null);
 
   const { hasSeenOnboarding, initialized: onboardingReady, startOnboarding } = useOnboardingStore();
 
@@ -66,6 +77,20 @@ export default function DashboardScreen() {
       return () => clearTimeout(timer);
     }
   }, [onboardingReady, hasSeenOnboarding, profile]);
+
+  // Fetch active hyperlocal ad
+  useEffect(() => {
+    const fetchAd = async () => {
+      const { data } = await supabase
+        .from('hyperlocal_ads')
+        .select('id, title, subtitle, cta_text, cta_url, bg_color, text_color')
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle();
+      setActiveAd(data ?? null);
+    };
+    fetchAd();
+  }, []);
 
   const fetchStats = useCallback(async () => {
     if (!user?.id) return;
@@ -167,6 +192,42 @@ export default function DashboardScreen() {
   return (
     <ScrollView style={styles.container}>
       <View style={styles.content}>
+        {/* Hyperlocal Ad Banner */}
+        {activeAd && (
+          <TouchableOpacity
+            activeOpacity={activeAd.cta_url ? 0.85 : 1}
+            style={[styles.adBanner, { backgroundColor: activeAd.bg_color }]}
+            onPress={() => {
+              if (activeAd.cta_url) {
+                Linking.openURL(activeAd.cta_url).catch(() => {});
+              }
+            }}
+          >
+            <View style={styles.adBannerLeft}>
+              <View style={styles.adBadge}>
+                <Text style={styles.adBadgeText}>Ad</Text>
+              </View>
+              <View style={styles.adTextBlock}>
+                <Text style={[styles.adTitle, { color: activeAd.text_color }]} numberOfLines={1}>
+                  {activeAd.title}
+                </Text>
+                {activeAd.subtitle ? (
+                  <Text style={[styles.adSubtitle, { color: activeAd.text_color }]} numberOfLines={1}>
+                    {activeAd.subtitle}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+            {activeAd.cta_url ? (
+              <View style={[styles.adCta, { borderColor: activeAd.text_color }]}>
+                <Text style={[styles.adCtaText, { color: activeAd.text_color }]}>
+                  {activeAd.cta_text}
+                </Text>
+              </View>
+            ) : null}
+          </TouchableOpacity>
+        )}
+
         {/* Welcome Section */}
         <View style={styles.welcomeSection}>
           <View style={styles.welcomeHeader}>
@@ -409,6 +470,56 @@ const styles = StyleSheet.create({
   content: {
     padding: 20,
     paddingBottom: 40,
+  },
+  adBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 16,
+    gap: 10,
+  },
+  adBannerLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  adBadge: {
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  adBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
+  },
+  adTextBlock: {
+    flex: 1,
+  },
+  adTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  adSubtitle: {
+    fontSize: 12,
+    opacity: 0.85,
+    marginTop: 1,
+  },
+  adCta: {
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  adCtaText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   welcomeSection: {
     marginBottom: 24,

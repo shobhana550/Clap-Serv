@@ -16,6 +16,7 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { supabase } from '@/lib/supabase';
+import { useAuthStore } from '@/store/authStore';
 import { useCategoryLookup } from '@/lib/useCategoryLookup';
 
 const PRIMARY = '#E20010';
@@ -60,6 +61,7 @@ function renderStars(rating: number) {
 
 export default function PublicProviderProfile() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { user } = useAuthStore();
   const { getCategoryById } = useCategoryLookup();
 
   const [loading, setLoading] = useState(true);
@@ -67,6 +69,7 @@ export default function PublicProviderProfile() {
   const [providerProfile, setProviderProfile] = useState<any>(null);
   const [completedJobs, setCompletedJobs] = useState(0);
   const [gigs, setGigs] = useState<any[]>([]);
+  const [messagingLoading, setMessagingLoading] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -117,6 +120,52 @@ export default function PublicProviderProfile() {
       console.error('Error fetching provider profile:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!user?.id) {
+      router.push('/(auth)/login' as any);
+      return;
+    }
+
+    const providerId = profile?.user_id || id;
+    if (!providerId || providerId === user.id) return;
+
+    setMessagingLoading(true);
+    try {
+      // Look for an existing direct conversation (no request_id) between buyer and provider
+      const { data: existing } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('buyer_id', user.id)
+        .eq('provider_id', providerId)
+        .is('request_id', null)
+        .maybeSingle();
+
+      let conversationId = existing?.id;
+
+      if (!conversationId) {
+        // Create a new direct conversation
+        const { data: created, error } = await supabase
+          .from('conversations')
+          .insert({ buyer_id: user.id, provider_id: providerId, request_id: null })
+          .select('id')
+          .single();
+
+        if (error || !created) {
+          console.error('Error creating conversation:', error);
+          setMessagingLoading(false);
+          return;
+        }
+        conversationId = created.id;
+      }
+
+      router.push(`/messages/chat?conversationId=${conversationId}` as any);
+    } catch (err) {
+      console.error('Error opening chat:', err);
+    } finally {
+      setMessagingLoading(false);
     }
   };
 
@@ -304,14 +353,14 @@ export default function PublicProviderProfile() {
 
         {/* Contact / Message CTA */}
         <TouchableOpacity
-          style={styles.contactBtn}
-          onPress={() => {
-            // Navigate to messages with this provider
-            router.push(`/messages/chat?userId=${profile.user_id || id}&name=${encodeURIComponent(fullName)}` as any);
-          }}
+          style={[styles.contactBtn, messagingLoading && { opacity: 0.7 }]}
+          onPress={handleSendMessage}
+          disabled={messagingLoading}
         >
           <FontAwesome name="comment" size={16} color={WHITE} />
-          <Text style={styles.contactBtnText}>Send Message</Text>
+          <Text style={styles.contactBtnText}>
+            {messagingLoading ? 'Opening chat...' : 'Send Message'}
+          </Text>
         </TouchableOpacity>
 
         <View style={{ height: 40 }} />

@@ -106,6 +106,35 @@ export const saveNotificationRecord = async (
 };
 
 /**
+ * Send a push notification AND save an in-app record — use this for all user-facing events.
+ * Fetches the recipient's push tokens automatically.
+ */
+export const notifyUser = async (
+  recipientId: string,
+  type: string,
+  title: string,
+  body: string,
+  data?: Record<string, any>,
+  channelId?: string
+): Promise<void> => {
+  // Save in-app record (always)
+  await saveNotificationRecord(recipientId, type, title, body, data);
+
+  // Send OS push notification
+  try {
+    const { data: tokens } = await supabase
+      .rpc('get_user_push_tokens', { target_user_id: recipientId });
+
+    if (tokens && tokens.length > 0) {
+      const tokenStrings = tokens.map((t: any) => t.token);
+      await sendPushNotifications(tokenStrings, title, body, data, channelId || 'default');
+    }
+  } catch (err) {
+    console.error('Error fetching push tokens for notifyUser:', err);
+  }
+};
+
+/**
  * Notify matched providers about a new service request
  */
 export const notifyProvidersOfNewRequest = async (

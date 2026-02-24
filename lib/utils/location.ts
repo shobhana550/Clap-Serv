@@ -81,61 +81,120 @@ const getWebLocation = (): Promise<Location | null> => {
       return;
     }
 
-    // Geolocation requires HTTPS or localhost
+    // Geolocation requires HTTPS or localhost or LAN IPs (Expo dev server)
+    const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
     const isSecure = typeof window !== 'undefined' && (
       window.location.protocol === 'https:' ||
-      window.location.hostname === 'localhost' ||
-      window.location.hostname === '127.0.0.1'
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname.startsWith('192.168.') ||
+      hostname.startsWith('10.') ||
+      hostname.startsWith('172.')
     );
 
     if (!isSecure) {
-      console.log('Geolocation requires HTTPS. Using IP-based fallback.');
+      console.log('Geolocation requires secure context. Using IP-based fallback.');
       getIpBasedLocation().then(resolve);
       return;
     }
 
     navigator.geolocation.getCurrentPosition(
-      (position) => {
-        resolve({
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-        });
+      async (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        // Reverse geocode to get city/state from the accurate browser coords
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 5000);
+          const response = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
+            {
+              signal: controller.signal,
+              headers: { 'Accept-Language': 'en', 'User-Agent': 'ClapServ/1.0' },
+            }
+          );
+          clearTimeout(timeoutId);
+          if (response.ok) {
+            const data = await response.json();
+            const addr = data.address || {};
+            resolve({
+              lat,
+              lng,
+              city: addr.city || addr.town || addr.village || addr.county || undefined,
+              state: addr.state || undefined,
+              country: addr.country || undefined,
+              postalCode: addr.postcode || undefined,
+            });
+            return;
+          }
+        } catch (e) {
+          console.warn('Reverse geocoding failed, using coords only:', e);
+        }
+        // Fall back to IP-based to at least get city name
+        const ipLocation = await getIpBasedLocation();
+        resolve(ipLocation ? { ...ipLocation, lat, lng } : { lat, lng });
       },
       (error) => {
         console.error('Browser geolocation error:', error.code, error.message);
         getIpBasedLocation().then(resolve);
       },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 }
     );
   });
 };
 
 /**
  * IP-based geolocation fallback for web
+ * Tries multiple services for reliability
  */
 const getIpBasedLocation = async (): Promise<Location | null> => {
+  // Try primary service
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
     const response = await fetch('https://ipapi.co/json/', { signal: controller.signal });
     clearTimeout(timeoutId);
-    if (!response.ok) return null;
-    const data = await response.json();
-    if (data.latitude && data.longitude) {
-      return {
-        lat: data.latitude,
-        lng: data.longitude,
-        city: data.city || undefined,
-        state: data.region || undefined,
-        country: data.country_name || undefined,
-        postalCode: data.postal || undefined,
-      };
+    if (response.ok) {
+      const data = await response.json();
+      if (data.latitude && data.longitude) {
+        return {
+          lat: data.latitude,
+          lng: data.longitude,
+          city: data.city || undefined,
+          state: data.region || undefined,
+          country: data.country_name || undefined,
+          postalCode: data.postal || undefined,
+        };
+      }
     }
-    return null;
   } catch (error) {
-    console.error('IP-based geolocation failed:', error);
-    return null;
+    console.warn('Primary IP geolocation failed, trying fallback:', error);
   }
+
+  // Try secondary service
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
+    const response = await fetch('https://ip-api.com/json/?fields=lat,lon,city,regionName,country,zip', { signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (response.ok) {
+      const data = await response.json();
+      if (data.lat && data.lon) {
+        return {
+          lat: data.lat,
+          lng: data.lon,
+          city: data.city || undefined,
+          state: data.regionName || undefined,
+          country: data.country || undefined,
+          postalCode: data.zip || undefined,
+        };
+      }
+    }
+  } catch (error) {
+    console.error('All IP-based geolocation services failed:', error);
+  }
+
+  return null;
 };
 
 /**

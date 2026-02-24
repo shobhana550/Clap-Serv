@@ -1,7 +1,7 @@
 /**
  * Provider Matcher Service
  * Finds providers that match a service request based on:
- * 1. Category skills match
+ * 1. Category skills match (bypassed for "Other" category)
  * 2. Distance/location proximity
  * 3. Active region check
  */
@@ -9,6 +9,10 @@
 import { supabase } from '@/lib/supabase';
 import { calculateDistance } from '@/lib/utils/location';
 import { geocodeAddress } from '@/lib/utils/location';
+
+/** City-range radius used for the "Other" category — notifies all nearby providers */
+const OTHER_CATEGORY_RANGE_KM = 30;
+const OTHER_CATEGORY_NAME = 'Other';
 
 interface MatchedProvider {
   userId: string;
@@ -47,10 +51,12 @@ export const findMatchingProviders = async (
       return [];
     }
 
-    const maxDistanceKm = category.max_distance_km;
+    // "Other" category: bypass skills check — notify ALL providers within city range
+    const isOtherCategory = category.name === OTHER_CATEGORY_NAME;
+    const maxDistanceKm = isOtherCategory ? OTHER_CATEGORY_RANGE_KM : category.max_distance_km;
 
-    // 2. Find all providers who have this category in their skills
-    const { data: providers, error: provError } = await supabase
+    // 2. Find providers: for "Other" fetch all; otherwise filter by skills
+    let providerQuery = supabase
       .from('provider_profiles')
       .select(`
         user_id,
@@ -60,8 +66,13 @@ export const findMatchingProviders = async (
           full_name,
           location
         )
-      `)
-      .contains('skills', [categoryId]);
+      `);
+
+    if (!isOtherCategory) {
+      providerQuery = providerQuery.contains('skills', [categoryId]);
+    }
+
+    const { data: providers, error: provError } = await providerQuery;
 
     if (provError || !providers) {
       console.error('Error fetching providers:', provError);
@@ -75,8 +86,8 @@ export const findMatchingProviders = async (
       return [];
     }
 
-    // 4. For online/unlimited services, all matching providers qualify
-    if (maxDistanceKm === null) {
+    // 4. For online/unlimited services (and never for "Other" — it must be physical), all matching providers qualify
+    if (maxDistanceKm === null && !isOtherCategory) {
       return await getProviderTokens(
         candidateProviders.map((p: any) => ({
           userId: p.user_id,
