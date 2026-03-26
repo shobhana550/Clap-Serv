@@ -18,6 +18,7 @@ import {
 import { router } from 'expo-router';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useTranslation } from 'react-i18next';
 import { loginSchema } from '@/lib/utils/validation';
 import { useAuthStore } from '@/store/authStore';
 import { Colors } from '@/constants/Colors';
@@ -29,6 +30,7 @@ type LoginFormData = {
 };
 
 export default function LoginScreen() {
+  const { t } = useTranslation();
   const [showPassword, setShowPassword] = useState(false);
   const signIn = useAuthStore((state) => state.signIn);
 
@@ -54,14 +56,14 @@ export default function LoginScreen() {
 
       if (error) {
         console.error('Login error:', error);
-        showAlert('Login Failed', error);
+        showAlert(t('auth.loginFailed'), error);
       } else {
         console.log('Login successful, navigating to tabs');
         router.replace('/(tabs)');
       }
     } catch (err: any) {
       console.error('Login exception:', err);
-      showAlert('Login Error', err.message || 'An unexpected error occurred');
+      showAlert(t('auth.loginError'), err.message || 'An unexpected error occurred');
     }
   };
 
@@ -88,20 +90,20 @@ export default function LoginScreen() {
               resizeMode="contain"
             />
             <Text style={styles.brandName}>Clap-Serv</Text>
-            <Text style={styles.brandTagline}>Connect. Service. Success.</Text>
+            <Text style={styles.brandTagline}>{t('auth.brandTagline')}</Text>
           </View>
 
           {/* Welcome Header */}
           <View style={styles.header}>
-            <Text style={styles.welcomeText}>Welcome Back!</Text>
-            <Text style={styles.subtitle}>Sign in to continue your journey</Text>
+            <Text style={styles.welcomeText}>{t('auth.welcomeBack')}</Text>
+            <Text style={styles.subtitle}>{t('auth.signInSubtitle')}</Text>
           </View>
 
           {/* Login Card */}
           <View style={styles.card}>
             {/* Email Input */}
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Email Address</Text>
+              <Text style={styles.label}>{t('auth.emailLabel')}</Text>
               <Controller
                 control={control}
                 name="email"
@@ -114,7 +116,7 @@ export default function LoginScreen() {
                       <Text style={styles.inputIcon}>✉️</Text>
                       <TextInput
                         style={styles.input}
-                        placeholder="your@email.com"
+                        placeholder={t('auth.emailPlaceholder')}
                         placeholderTextColor="#C5C4CC"
                         value={value}
                         onChangeText={onChange}
@@ -134,7 +136,7 @@ export default function LoginScreen() {
 
             {/* Password Input */}
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Password</Text>
+              <Text style={styles.label}>{t('auth.passwordLabel')}</Text>
               <Controller
                 control={control}
                 name="password"
@@ -147,7 +149,7 @@ export default function LoginScreen() {
                       <Text style={styles.inputIcon}>🔒</Text>
                       <TextInput
                         style={styles.input}
-                        placeholder="Enter your password"
+                        placeholder={t('auth.passwordPlaceholder')}
                         placeholderTextColor="#C5C4CC"
                         value={value}
                         onChangeText={onChange}
@@ -178,7 +180,7 @@ export default function LoginScreen() {
               onPress={() => router.push('/(auth)/forgot-password')}
               style={styles.forgotPasswordButton}
             >
-              <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+              <Text style={styles.forgotPasswordText}>{t('auth.forgotPassword')}</Text>
             </TouchableOpacity>
 
             {/* Sign In Button */}
@@ -191,7 +193,7 @@ export default function LoginScreen() {
                 <ActivityIndicator color="#FFFFFF" />
               ) : (
                 <>
-                  <Text style={styles.signInButtonText}>Sign In</Text>
+                  <Text style={styles.signInButtonText}>{t('auth.signIn')}</Text>
                   <Text style={styles.signInButtonIcon}>→</Text>
                 </>
               )}
@@ -201,20 +203,20 @@ export default function LoginScreen() {
           {/* Divider */}
           <View style={styles.divider}>
             <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>or</Text>
+            <Text style={styles.dividerText}>{t('common.or')}</Text>
             <View style={styles.dividerLine} />
           </View>
 
           {/* Social Login Placeholder */}
           <View style={styles.socialSection}>
-            <Text style={styles.socialText}>🚀 Social login coming soon</Text>
+            <Text style={styles.socialText}>{t('auth.socialComingSoon')}</Text>
           </View>
 
           {/* Sign Up Link */}
           <View style={styles.signUpSection}>
-            <Text style={styles.signUpText}>Don't have an account? </Text>
+            <Text style={styles.signUpText}>{t('auth.noAccount')}</Text>
             <TouchableOpacity onPress={() => router.push('/(auth)/register')}>
-              <Text style={styles.signUpLink}>Create Account</Text>
+              <Text style={styles.signUpLink}>{t('auth.createAccount')}</Text>
             </TouchableOpacity>
           </View>
         </View>

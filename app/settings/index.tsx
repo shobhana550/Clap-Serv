@@ -15,39 +15,41 @@ import {
 import { router } from 'expo-router';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/authStore';
+import { useLanguageStore } from '@/store/languageStore';
+import { LANGUAGE_OPTIONS } from '@/lib/i18n';
 import { showAlert } from '@/utils/alert';
 
 export default function SettingsScreen() {
+  const { t } = useTranslation();
   const { signOut } = useAuthStore();
+  const { language, setLanguage } = useLanguageStore();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [pushNotifications, setPushNotifications] = useState(true);
 
   const handleSignOut = () => {
     console.log('Sign out button clicked');
-    showAlert('Sign Out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
+    showAlert(t('settings.signOutTitle'), t('settings.signOutMessage'), [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: 'Sign Out',
+        text: t('settings.signOut'),
         style: 'destructive',
         onPress: async () => {
           console.log('User confirmed sign out');
           try {
             console.log('Calling signOut()');
-            // Sign out from auth store
             await signOut();
 
             console.log('Sign out completed, navigating...');
-            // Small delay to ensure state is cleared
             setTimeout(() => {
               console.log('Navigating to login screen');
-              // Navigate to login screen
               router.replace('/(auth)/login');
             }, 100);
           } catch (error) {
             console.error('Error signing out:', error);
-            showAlert('Error', 'Failed to sign out. Please try again.');
+            showAlert(t('common.error'), t('settings.signOutError'));
           }
         },
       },
@@ -56,12 +58,12 @@ export default function SettingsScreen() {
 
   const handleClearData = () => {
     showAlert(
-      'Clear All Data',
-      'This will remove all your local requests, proposals, projects, and messages. This action cannot be undone.',
+      t('settings.clearDataTitle'),
+      t('settings.clearDataMessage'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Clear Data',
+          text: t('settings.clearDataButton'),
           style: 'destructive',
           onPress: async () => {
             try {
@@ -70,10 +72,10 @@ export default function SettingsScreen() {
                 'projects',
                 'conversations',
               ]);
-              showAlert('Success', 'All local data has been cleared.');
+              showAlert(t('common.success'), t('settings.clearDataSuccess'));
             } catch (error) {
               console.error('Error clearing data:', error);
-              showAlert('Error', 'Failed to clear data.');
+              showAlert(t('common.error'), t('settings.clearDataError'));
             }
           },
         },
@@ -96,14 +98,14 @@ export default function SettingsScreen() {
         <TouchableOpacity onPress={handleBack} style={styles.backButton}>
           <FontAwesome name="arrow-left" size={20} color="#E20010" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Settings</Text>
+        <Text style={styles.headerTitle}>{t('settings.title')}</Text>
         <View style={{ width: 40 }} />
       </View>
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
         {/* Account Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Account</Text>
+          <Text style={styles.sectionTitle}>{t('settings.account')}</Text>
 
           <TouchableOpacity
             style={styles.settingItem}
@@ -113,7 +115,7 @@ export default function SettingsScreen() {
               <View style={[styles.iconCircle, { backgroundColor: '#FFE0E2' }]}>
                 <FontAwesome name="user" size={18} color="#E20010" />
               </View>
-              <Text style={styles.settingText}>Profile Settings</Text>
+              <Text style={styles.settingText}>{t('settings.profileSettings')}</Text>
             </View>
             <FontAwesome name="chevron-right" size={16} color="#C5C4CC" />
           </TouchableOpacity>
@@ -126,7 +128,7 @@ export default function SettingsScreen() {
               <View style={[styles.iconCircle, { backgroundColor: '#FFE0E2' }]}>
                 <FontAwesome name="edit" size={18} color="#E20010" />
               </View>
-              <Text style={styles.settingText}>Edit Profile</Text>
+              <Text style={styles.settingText}>{t('settings.editProfile')}</Text>
             </View>
             <FontAwesome name="chevron-right" size={16} color="#C5C4CC" />
           </TouchableOpacity>
@@ -139,22 +141,51 @@ export default function SettingsScreen() {
               <View style={[styles.iconCircle, { backgroundColor: '#FFE0E2' }]}>
                 <FontAwesome name="lock" size={18} color="#E20010" />
               </View>
-              <Text style={styles.settingText}>Change Password</Text>
+              <Text style={styles.settingText}>{t('settings.changePassword')}</Text>
             </View>
             <FontAwesome name="chevron-right" size={16} color="#C5C4CC" />
           </TouchableOpacity>
         </View>
 
+        {/* Language Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{t('settings.language')}</Text>
+          <Text style={styles.languageNote}>{t('settings.languageNote')}</Text>
+
+          <View style={styles.languageRow}>
+            {LANGUAGE_OPTIONS.map((opt) => (
+              <TouchableOpacity
+                key={opt.code}
+                style={[
+                  styles.languageChip,
+                  language === opt.code && styles.languageChipActive,
+                ]}
+                onPress={() => setLanguage(opt.code)}
+              >
+                <Text style={styles.languageFlag}>{opt.flag}</Text>
+                <Text
+                  style={[
+                    styles.languageChipText,
+                    language === opt.code && styles.languageChipTextActive,
+                  ]}
+                >
+                  {opt.nativeLabel}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
         {/* Notifications Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Notifications</Text>
+          <Text style={styles.sectionTitle}>{t('settings.notifications')}</Text>
 
           <View style={styles.settingItem}>
             <View style={styles.settingLeft}>
               <View style={[styles.iconCircle, { backgroundColor: '#FEF3C7' }]}>
                 <FontAwesome name="bell" size={18} color="#F59E0B" />
               </View>
-              <Text style={styles.settingText}>Enable Notifications</Text>
+              <Text style={styles.settingText}>{t('settings.enableNotifications')}</Text>
             </View>
             <Switch
               value={notificationsEnabled}
@@ -169,7 +200,7 @@ export default function SettingsScreen() {
               <View style={[styles.iconCircle, { backgroundColor: '#FEF3C7' }]}>
                 <FontAwesome name="envelope" size={18} color="#F59E0B" />
               </View>
-              <Text style={styles.settingText}>Email Notifications</Text>
+              <Text style={styles.settingText}>{t('settings.emailNotifications')}</Text>
             </View>
             <Switch
               value={emailNotifications}
@@ -184,7 +215,7 @@ export default function SettingsScreen() {
               <View style={[styles.iconCircle, { backgroundColor: '#FEF3C7' }]}>
                 <FontAwesome name="mobile" size={18} color="#F59E0B" />
               </View>
-              <Text style={styles.settingText}>Push Notifications</Text>
+              <Text style={styles.settingText}>{t('settings.pushNotifications')}</Text>
             </View>
             <Switch
               value={pushNotifications}
@@ -197,53 +228,43 @@ export default function SettingsScreen() {
 
         {/* App Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>App</Text>
+          <Text style={styles.sectionTitle}>{t('settings.app')}</Text>
 
           <TouchableOpacity
             style={styles.settingItem}
-            onPress={() => showAlert('About', 'Clap-Serv v1.0.0\nYour local service marketplace')}
+            onPress={() => showAlert(t('settings.about'), t('settings.aboutContent', { version: '1.0.0' }))}
           >
             <View style={styles.settingLeft}>
               <View style={[styles.iconCircle, { backgroundColor: '#E0E7FF' }]}>
                 <FontAwesome name="info-circle" size={18} color="#6366F1" />
               </View>
-              <Text style={styles.settingText}>About</Text>
+              <Text style={styles.settingText}>{t('settings.about')}</Text>
             </View>
             <FontAwesome name="chevron-right" size={16} color="#C5C4CC" />
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.settingItem}
-            onPress={() =>
-              showAlert(
-                'Privacy Policy',
-                'Your privacy is important to us. We collect and use your data only to provide services.'
-              )
-            }
+            onPress={() => showAlert(t('settings.privacyPolicy'), t('settings.privacyContent'))}
           >
             <View style={styles.settingLeft}>
               <View style={[styles.iconCircle, { backgroundColor: '#E0E7FF' }]}>
                 <FontAwesome name="shield" size={18} color="#6366F1" />
               </View>
-              <Text style={styles.settingText}>Privacy Policy</Text>
+              <Text style={styles.settingText}>{t('settings.privacyPolicy')}</Text>
             </View>
             <FontAwesome name="chevron-right" size={16} color="#C5C4CC" />
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.settingItem}
-            onPress={() =>
-              showAlert(
-                'Terms of Service',
-                'By using Clap-Serv, you agree to our terms and conditions.'
-              )
-            }
+            onPress={() => showAlert(t('settings.termsOfService'), t('settings.termsContent'))}
           >
             <View style={styles.settingLeft}>
               <View style={[styles.iconCircle, { backgroundColor: '#E0E7FF' }]}>
                 <FontAwesome name="file-text-o" size={18} color="#6366F1" />
               </View>
-              <Text style={styles.settingText}>Terms of Service</Text>
+              <Text style={styles.settingText}>{t('settings.termsOfService')}</Text>
             </View>
             <FontAwesome name="chevron-right" size={16} color="#C5C4CC" />
           </TouchableOpacity>
@@ -251,7 +272,7 @@ export default function SettingsScreen() {
 
         {/* Data Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Data Management</Text>
+          <Text style={styles.sectionTitle}>{t('settings.dataManagement')}</Text>
 
           <TouchableOpacity style={styles.settingItem} onPress={handleClearData}>
             <View style={styles.settingLeft}>
@@ -259,7 +280,7 @@ export default function SettingsScreen() {
                 <FontAwesome name="trash" size={18} color="#EF4444" />
               </View>
               <Text style={[styles.settingText, { color: '#EF4444' }]}>
-                Clear All Data
+                {t('settings.clearAllData')}
               </Text>
             </View>
             <FontAwesome name="chevron-right" size={16} color="#C5C4CC" />
@@ -269,10 +290,10 @@ export default function SettingsScreen() {
         {/* Sign Out Button */}
         <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
           <FontAwesome name="sign-out" size={18} color="#EF4444" />
-          <Text style={styles.signOutText}>Sign Out</Text>
+          <Text style={styles.signOutText}>{t('settings.signOut')}</Text>
         </TouchableOpacity>
 
-        <Text style={styles.versionText}>Version 1.0.0</Text>
+        <Text style={styles.versionText}>{t('common.version', { version: '1.0.0' })}</Text>
       </ScrollView>
     </View>
   );
@@ -375,5 +396,42 @@ const styles = StyleSheet.create({
     color: '#C5C4CC',
     textAlign: 'center',
     marginTop: 24,
+  },
+  languageNote: {
+    fontSize: 13,
+    color: '#B3B8C4',
+    marginBottom: 12,
+    paddingLeft: 4,
+  },
+  languageRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  languageChip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: '#E6E9EF',
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  languageChipActive: {
+    borderColor: '#E20010',
+    backgroundColor: '#FFF5F5',
+  },
+  languageFlag: {
+    fontSize: 18,
+  },
+  languageChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#B3B8C4',
+  },
+  languageChipTextActive: {
+    color: '#E20010',
   },
 });

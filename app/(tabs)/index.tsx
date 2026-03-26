@@ -62,6 +62,7 @@ export default function DashboardScreen() {
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeAd, setActiveAd] = useState<HyperlocalAd | null>(null);
+  const [regionActive, setRegionActive] = useState<boolean | null>(null); // null = still checking
 
   const { hasSeenOnboarding, initialized: onboardingReady, startOnboarding } = useOnboardingStore();
 
@@ -91,6 +92,24 @@ export default function DashboardScreen() {
     };
     fetchAd();
   }, []);
+
+  // Check if the user's city is an active region (controlled via Admin Panel > Regions)
+  useEffect(() => {
+    const userCity = (profile?.location as any)?.city;
+    if (!userCity) {
+      setRegionActive(null); // no location set — don't show anything
+      return;
+    }
+
+    supabase
+      .from('service_regions')
+      .select('id')
+      .ilike('city', userCity.trim())
+      .eq('is_active', true)
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => setRegionActive(!!data));
+  }, [profile?.location]);
 
   const fetchStats = useCallback(async () => {
     if (!user?.id) return;
@@ -226,6 +245,21 @@ export default function DashboardScreen() {
               </View>
             ) : null}
           </TouchableOpacity>
+        )}
+
+        {/* Coming Soon Banner — shown only when user's city is not yet active */}
+        {regionActive === false && (
+          <View style={styles.comingSoonBanner}>
+            <Text style={styles.comingSoonIcon}>📍</Text>
+            <View style={styles.comingSoonTextBlock}>
+              <Text style={styles.comingSoonTitle}>
+                Coming Soon to {(profile?.location as any)?.city}!
+              </Text>
+              <Text style={styles.comingSoonSubtitle}>
+                We're starting in Darbhanga & nearby areas. You can still explore the app — we'll be active in your city very soon.
+              </Text>
+            </View>
+          </View>
         )}
 
         {/* Welcome Section */}
@@ -804,5 +838,34 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 4,
     paddingHorizontal: 16,
+  },
+  comingSoonBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 16,
+  },
+  comingSoonIcon: {
+    fontSize: 22,
+    marginTop: 1,
+  },
+  comingSoonTextBlock: {
+    flex: 1,
+  },
+  comingSoonTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#92400E',
+    marginBottom: 4,
+  },
+  comingSoonSubtitle: {
+    fontSize: 13,
+    color: '#B45309',
+    lineHeight: 19,
   },
 });
