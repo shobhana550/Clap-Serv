@@ -75,8 +75,11 @@ export default function NotificationsScreen() {
     }
 
     // Navigate based on notification type
-    if (notification.data?.requestId) {
-      router.push(`/requests/${notification.data.requestId}` as any);
+    const { type, requestId, conversationId } = notification.data || {};
+    if (type === 'new_message' && conversationId) {
+      router.push(`/messages/chat?conversationId=${conversationId}` as any);
+    } else if (requestId) {
+      router.push(`/requests/${requestId}` as any);
     }
   };
 

@@ -17,6 +17,7 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from '@/store/authStore';
 import { showAlert } from '@/utils/alert';
+import { supabase } from '@/lib/supabase';
 
 interface Gig {
   id: string;
@@ -55,28 +56,66 @@ export default function ProviderGigsScreen() {
   }, []);
 
   const loadProviderData = async () => {
+    if (!user?.id) return;
     try {
-      const providerDataJson = await AsyncStorage.getItem(`provider_data_${user?.id}`);
-      if (providerDataJson) {
-        const data = JSON.parse(providerDataJson);
-        setBio(data.bio || '');
-        setGigs(data.gigs || []);
-        setSocialLinks(data.socialLinks || []);
+      // Load bio from provider_profiles
+      const { data: provData } = await supabase
+        .from('provider_profiles')
+        .select('bio')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (provData?.bio) setBio(provData.bio);
+
+      // Load gigs from provider_gigs table
+      const { data: gigsData } = await supabase
+        .from('provider_gigs')
+        .select('*')
+        .eq('provider_id', user.id)
+        .order('created_at', { ascending: true });
+      if (gigsData) {
+        setGigs(gigsData.map(g => ({
+          id: g.id,
+          title: g.title,
+          description: g.description || '',
+          price: g.price ? String(g.price) : '',
+          duration: g.duration || '',
+        })));
       }
+
+      // Social links still from AsyncStorage (not shown on buyer profile)
+      const linksJson = await AsyncStorage.getItem(`social_links_${user.id}`);
+      if (linksJson) setSocialLinks(JSON.parse(linksJson));
     } catch (error) {
       console.error('Error loading provider data:', error);
     }
   };
 
   const saveProviderData = async () => {
+    if (!user?.id) return;
     try {
-      const data = {
-        bio,
-        gigs,
-        socialLinks,
-        updatedAt: new Date().toISOString(),
-      };
-      await AsyncStorage.setItem(`provider_data_${user?.id}`, JSON.stringify(data));
+      // Save bio to provider_profiles
+      await supabase
+        .from('provider_profiles')
+        .update({ bio })
+        .eq('user_id', user.id);
+
+      // Replace all gigs: delete existing, then insert current list
+      await supabase.from('provider_gigs').delete().eq('provider_id', user.id);
+      if (gigs.length > 0) {
+        await supabase.from('provider_gigs').insert(
+          gigs.map(g => ({
+            provider_id: user.id,
+            title: g.title,
+            description: g.description || null,
+            price: g.price ? parseFloat(g.price) || null : null,
+            duration: g.duration || null,
+          }))
+        );
+      }
+
+      // Save social links to AsyncStorage
+      await AsyncStorage.setItem(`social_links_${user.id}`, JSON.stringify(socialLinks));
+
       showAlert('Success', 'Your information has been saved!');
     } catch (error) {
       console.error('Error saving provider data:', error);

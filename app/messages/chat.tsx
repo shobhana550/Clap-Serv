@@ -765,7 +765,9 @@ export default function ChatScreen() {
             placeholderTextColor={MEDIUM}
             multiline
             maxLength={2000}
-            returnKeyType="default"
+            returnKeyType="send"
+            blurOnSubmit={false}
+            onSubmitEditing={sendMessage}
           />
 
           <TouchableOpacity
