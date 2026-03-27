@@ -14,7 +14,6 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from '@/store/authStore';
 import { showAlert } from '@/utils/alert';
 import { supabase } from '@/lib/supabase';
@@ -58,13 +57,14 @@ export default function ProviderGigsScreen() {
   const loadProviderData = async () => {
     if (!user?.id) return;
     try {
-      // Load bio from provider_profiles
+      // Load bio and social_links from provider_profiles
       const { data: provData } = await supabase
         .from('provider_profiles')
-        .select('bio')
+        .select('bio, social_links')
         .eq('user_id', user.id)
         .maybeSingle();
       if (provData?.bio) setBio(provData.bio);
+      if (provData?.social_links) setSocialLinks(provData.social_links);
 
       // Load gigs from provider_gigs table
       const { data: gigsData } = await supabase
@@ -81,10 +81,6 @@ export default function ProviderGigsScreen() {
           duration: g.duration || '',
         })));
       }
-
-      // Social links still from AsyncStorage (not shown on buyer profile)
-      const linksJson = await AsyncStorage.getItem(`social_links_${user.id}`);
-      if (linksJson) setSocialLinks(JSON.parse(linksJson));
     } catch (error) {
       console.error('Error loading provider data:', error);
     }
@@ -93,11 +89,10 @@ export default function ProviderGigsScreen() {
   const saveProviderData = async () => {
     if (!user?.id) return;
     try {
-      // Save bio to provider_profiles
+      // Upsert bio + social_links to provider_profiles
       await supabase
         .from('provider_profiles')
-        .update({ bio })
-        .eq('user_id', user.id);
+        .upsert({ user_id: user.id, bio, social_links: socialLinks }, { onConflict: 'user_id' });
 
       // Replace all gigs: delete existing, then insert current list
       await supabase.from('provider_gigs').delete().eq('provider_id', user.id);
@@ -112,9 +107,6 @@ export default function ProviderGigsScreen() {
           }))
         );
       }
-
-      // Save social links to AsyncStorage
-      await AsyncStorage.setItem(`social_links_${user.id}`, JSON.stringify(socialLinks));
 
       showAlert('Success', 'Your information has been saved!');
     } catch (error) {
