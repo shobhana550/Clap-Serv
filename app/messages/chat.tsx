@@ -673,14 +673,17 @@ export default function ChatScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <FontAwesome name="chevron-left" size={18} color={DARK} />
         </TouchableOpacity>
-        <View style={styles.headerCenter}>
+        <TouchableOpacity
+          style={styles.headerCenter}
+          onPress={() => otherPersonId && router.push(`/profile/${otherPersonId}`)}
+        >
           <View style={styles.headerAvatar}>
             <Text style={styles.headerAvatarText}>
               {otherPersonName.charAt(0).toUpperCase() || 'U'}
             </Text>
           </View>
           <Text style={styles.headerTitle} numberOfLines={1}>{otherPersonName}</Text>
-        </View>
+        </TouchableOpacity>
         <View style={styles.headerRight} />
       </View>
 

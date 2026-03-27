@@ -699,7 +699,10 @@ export default function RequestDetailScreen() {
             {proposals.map((proposal) => (
               <View key={proposal.id} style={styles.proposalCard}>
                 <View style={styles.proposalHeader}>
-                  <View style={styles.providerInfo}>
+                  <TouchableOpacity
+                    style={styles.providerInfo}
+                    onPress={() => proposal.provider?.id && router.push(`/profile/${proposal.provider.id}`)}
+                  >
                     <View style={styles.providerAvatar}>
                       <Text style={styles.providerAvatarText}>
                         {(proposal.provider?.full_name || 'P').charAt(0).toUpperCase()}
@@ -713,7 +716,7 @@ export default function RequestDetailScreen() {
                         Submitted {proposal.created_at ? getTimeAgo(proposal.created_at) : 'recently'}
                       </Text>
                     </View>
-                  </View>
+                  </TouchableOpacity>
                   <View
                     style={[
                       styles.proposalStatusBadge,
@@ -784,6 +787,13 @@ export default function RequestDetailScreen() {
                 {/* Actions for pending proposals */}
                 {proposal.status === 'pending' && request.status === 'open' && (
                   <View>
+                    <TouchableOpacity
+                      style={styles.chatProviderButton}
+                      onPress={() => proposal.provider?.id && router.push(`/profile/${proposal.provider.id}`)}
+                    >
+                      <FontAwesome name="user" size={16} color={PRIMARY} />
+                      <Text style={styles.chatProviderButtonText}>View Provider Profile</Text>
+                    </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.chatProviderButton}
                       onPress={() => handleChatWithProvider(proposal)}
