@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "579075048940",
+    "project_id": "clap-serv",
+    "storage_bucket": "clap-serv.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:579075048940:android:eeb9f7272cec8e6b00ecc9",
+        "android_client_info": {
+          "package_name": "com.clapserv.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBhR50ui3xgZH6ep2bnag9JIwtLD-VoQsg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

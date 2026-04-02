@@ -23,6 +23,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
 import { notifyUser } from '@/lib/notifications/sendNotification';
 import { showAlert } from '@/utils/alert';
+import { useAnalytics } from '@/lib/analytics';
 
 // Validation schema
 const proposalSchema = z.object({
@@ -46,6 +47,7 @@ export default function NewProposalScreen() {
   const [loading, setLoading] = useState(true);
   const [request, setRequest] = useState<any>(null);
   const user = useAuthStore((state) => state.user);
+  const { track } = useAnalytics();
 
   // Fetch the service request from Supabase on mount
   useEffect(() => {
@@ -136,6 +138,8 @@ export default function NewProposalScreen() {
         showAlert('Error', 'Failed to submit your proposal. Please try again.');
         return;
       }
+
+      track('bid_submitted', { request_id: requestId, price: Number(data.price) });
 
       // Notify the buyer about the new proposal (push + in-app)
       if (request.buyer_id) {

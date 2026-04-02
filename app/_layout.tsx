@@ -7,6 +7,11 @@ import { useEffect, useRef, useState } from 'react';
 import { View, ActivityIndicator, Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import 'react-native-reanimated';
+import PostHog, { PostHogProvider } from 'posthog-react-native';
+
+const posthog = new PostHog('phc_zaYSSE5mWmf6tEMBtcMk4rBP6WYozTqCwYsp6oiifLZa', {
+  host: 'https://eu.posthog.com',
+});
 
 import { useColorScheme } from '@/components/useColorScheme';
 import { useAuthStore } from '@/store/authStore';
@@ -111,6 +116,10 @@ function RootLayoutNav() {
   useEffect(() => {
     if (user && !profile) {
       fetchProfile(user.id);
+    }
+    // Identify user in PostHog for cross-session analytics
+    if (user) {
+      posthog.identify(user.id, { email: user.email });
     }
   }, [user]);
 
@@ -233,10 +242,12 @@ function RootLayoutNav() {
   }
 
   return (
-    <SafeAreaProvider>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <Slot />
-      </ThemeProvider>
-    </SafeAreaProvider>
+    <PostHogProvider client={posthog}>
+      <SafeAreaProvider>
+        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+          <Slot />
+        </ThemeProvider>
+      </SafeAreaProvider>
+    </PostHogProvider>
   );
 }

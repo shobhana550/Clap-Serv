@@ -22,6 +22,7 @@ import { signupSchema } from '@/lib/utils/validation';
 import { useAuthStore } from '@/store/authStore';
 import { UserRole } from '@/types';
 import { showAlert } from '@/utils/alert';
+import { useAnalytics } from '@/lib/analytics';
 
 type SignUpFormData = {
   fullName: string;
@@ -35,6 +36,7 @@ export default function RegisterScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const signUp = useAuthStore((state) => state.signUp);
+  const { track } = useAnalytics();
 
   const {
     control,
@@ -65,6 +67,7 @@ export default function RegisterScreen() {
     if (error) {
       showAlert('Registration Failed', error);
     } else {
+      track('user_signed_up', { role: data.role });
       showAlert(
         'Success!',
         'Your account has been created. Please check your email to verify your account.',

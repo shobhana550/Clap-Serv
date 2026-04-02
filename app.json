@@ -23,6 +23,7 @@
     "android": {
       "package": "com.clapserv.app",
       "versionCode": 2,
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -46,7 +47,7 @@
           "color": "#E20010",
           "defaultChannel": "default"
         }
-      ]
+      ],
     ],
     "experiments": {
       "typedRoutes": true

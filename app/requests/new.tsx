@@ -28,6 +28,7 @@ import { useUserStore } from '@/store/userStore';
 import { getCurrentLocation, formatLocationString } from '@/lib/utils/location';
 import { Location } from '@/types';
 import { notifyMatchingProviders } from '@/lib/notifications';
+import { useAnalytics } from '@/lib/analytics';
 
 interface DbCategory {
   id: string;
@@ -60,6 +61,7 @@ type RequestFormData = z.infer<typeof requestSchema>;
 export default function NewRequestScreen() {
   const { user } = useAuthStore();
   const { profile } = useUserStore();
+  const { track } = useAnalytics();
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -239,6 +241,7 @@ export default function NewRequestScreen() {
       }
 
       console.log('Request saved to Supabase successfully');
+      track('request_posted', { category_id: categoryUuid, budget_min: minBudget, budget_max: maxBudget });
 
       // Notify matching providers (runs in background, don't block the user)
       if (insertedRequest?.id) {

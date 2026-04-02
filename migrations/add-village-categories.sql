@@ -162,7 +162,53 @@ VALUES
 
   ('Matchmaking',
    'Traditional matrimonial services — local matchmaker for arranged marriage proposals',
-   'heart', 30)
+   'heart', 30),
+
+  -- ── LAND & LEGAL SERVICES ────────────────────────────────────────────────
+  -- Ameen (land surveyor) and Anchal agents are in massive daily demand across Bihar.
+  -- Zero digital presence today — entirely word of mouth.
+
+  ('Land Measurement (Ameen)',
+   'Licensed land surveyor (ameen) for plot measurement, boundary dispute, registry prep, court-ordered survey',
+   'ruler', 30),
+
+  ('Legal & Advocate Services',
+   'Local lawyer/advocate for property disputes, family cases, civil matters, FIR drafting, court affidavits',
+   'balance-scale', 30),
+
+  ('Anchal & Revenue Agent',
+   'Anchal kachahri agent for dakhil kharij, lagan receipt, jamabandi, mutation, land record correction',
+   'stamp', 15),
+
+  ('Loan & Bank Agent',
+   'KCC (Kisan Credit Card), PM Kisan, SHG loan, Mudra loan, gold loan — application and follow-up help',
+   'university', 20),
+
+  -- ── GARDEN & HORTICULTURE ─────────────────────────────────────────────────
+
+  ('Garden & Landscaping (Mali)',
+   'Garden maintenance, lawn mowing, plant nursery, tree cutting, kitchen garden setup, seasonal planting',
+   'leaf', 10),
+
+  -- ── ANIMAL TRANSPORT ──────────────────────────────────────────────────────
+  -- Pashu mandi transport is completely informal and high-frequency in rural Bihar.
+
+  ('Animal Transport',
+   'Cattle/buffalo/goat transport to mandi or veterinary — tractor trolley or pickup vehicle',
+   'horse', 30),
+
+  -- ── WATER BORING ──────────────────────────────────────────────────────────
+  -- One of the highest-ticket rural services. Almost no digital discovery.
+
+  ('Water Boring & Drilling',
+   'Hand pump boring, submersible boring, ring well construction, borewell survey and drilling',
+   'tint', 30),
+
+  -- ── CONSTRUCTION MATERIAL SUPPLY ──────────────────────────────────────────
+
+  ('Sand, Brick & Construction Supply',
+   'Local delivery of reti (sand), eet (brick), gitti, cement bags — for home construction',
+   'truck', 20)
 
 ON CONFLICT (name) DO NOTHING;
 
