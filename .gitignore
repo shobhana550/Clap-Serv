@@ -40,3 +40,13 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Claude Code local config
+.claude/
+
+# Windows artifacts
+nul
+
+# Scratch/test files
+test-supabase-console.js
+update-styles.js
